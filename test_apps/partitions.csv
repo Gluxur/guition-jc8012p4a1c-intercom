@@ -1,0 +1,7 @@
+# Table dédiée au firmware de test : pas d'OTA (les tests se flashent au
+# câble), donc une seule partition applicative. 4M laisse de la marge — le
+# binaire tire LVGL via bsp.
+# Name,     Type, SubType, Offset,  Size, Flags
+nvs,        data, nvs,           ,  0x6000,
+phy_init,   data, phy,           ,  0x1000,
+factory,    app,  factory,       ,  4M,

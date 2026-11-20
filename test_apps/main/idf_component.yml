@@ -1,0 +1,10 @@
+# Dépendances de `bsp` uniquement. Volontairement PAS d'esp_peer ni
+# d'esp_wifi_remote : le firmware de test ne monte aucun réseau, et s'en passer
+# évite de tirer esp_hosted (dont le Kconfig exige la variable d'environnement
+# ESP_IDF_VERSION, non définie par l'extension VS Code sur cette machine).
+dependencies:
+  lvgl/lvgl: "~9.5.0"
+  espressif/esp_lcd_touch: ">=1.2.1"
+  # Voir main/idf_component.yml : es8311 autonome inutilisé (le driver vient
+  # d'esp_codec_dev) et bloquant pour ESP-IDF 6.x.
+  espressif/esp_codec_dev: "^1.3.4"

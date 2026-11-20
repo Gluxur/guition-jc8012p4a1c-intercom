@@ -1,0 +1,31 @@
+CONFIG_IDF_TARGET="esp32p4"
+
+# PSRAM : les deux framebuffers DSI (800x1280 RGB565 = 2 Mo chacun) et les
+# buffers de sortie du décodeur JPEG n'ont aucune chance de tenir en SRAM
+# interne. Mêmes réglages que le firmware de production — un test qui tourne
+# avec une config mémoire différente ne prouve rien sur le produit.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
+# Console = USB Serial JTAG (COM7), comme la production : c'est par là que
+# sort le menu Unity.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+CONFIG_LV_FONT_MONTSERRAT_24=y
+
+# Les assertions restent ACTIVES ici, contrairement à la production (compilée
+# en PERF, assertions off) : sur un banc de test on veut que l'erreur explose
+# au plus près de sa cause.
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y
+
+# Le menu Unity lit sur la console : sans ça la tâche principale rend la main
+# et le watchdog de tâche inactive se plaint pendant qu'on attend une saisie.
+CONFIG_ESP_TASK_WDT_INIT=n
