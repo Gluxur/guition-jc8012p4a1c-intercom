@@ -1,0 +1,337 @@
+# PSRAM: required for the MIPI-DSI panel's DPI framebuffers (~4MB) and
+# the LVGL/video draw buffers in components/bsp/bsp.c — internal RAM
+# cannot hold them. Same board/PSRAM part as the visiophone reference
+# project, which resolves SPIRAM to HEX mode.
+# Note: depuis IDF 6.0 l'esp32p4 propose aussi SPIRAM_SPEED_80M (en plus de
+# 20M/200M/250M). Le défaut du Kconfig reste SPIRAM_SPEED_200M, donc rien n'est
+# forcé ici — la vitesse effective n'a pas changé en migrant depuis 5.4.4.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+# Test PSRAM au boot : 906 ms mesurees sur le log de demarrage (entre
+# « Found 32MB PSRAM device » et « SPI SRAM memory test OK »). La puce est
+# soudee : elle ne peut pas devenir absente ou fautive entre deux demarrages,
+# et un defaut reel se manifesterait de toute facon a la premiere allocation.
+CONFIG_SPIRAM_MEMTEST=n
+# Code et rodata executes depuis la PSRAM (copies au boot) au lieu de la
+# flash en DIO 80 MHz (QIO interdit, cf. desensibilisation radio). Mesure le
+# 2026-11-07 de nuit, meme scene, 3 sessions : C0 33 -> 24 %, C1 16 -> 10 %,
+# mutex LVGL moyen 8,2 -> 4,3 ms (max 13 -> 6,5), OTA complete 136 -> 34 s ;
+# fps et RSSI inchanges. Effet de bord voulu : SPI_FLASH_CACHE_NO_DISABLE, une
+# ecriture NVS/OTA ne gele plus le cache ni l'autre coeur. Cout : ~3 Mo de
+# PSRAM et ~3 Ko de SRAM interne en moins en session (23 -> 20 Ko).
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+
+# Tick FreeRTOS a 1000 Hz (defaut IDF : 100). esp_hosted le REVENDIQUE au boot :
+#   W os_wrapper_esp: CONFIG_FREERTOS_HZ is 100, ESP-Hosted recommended 1000,
+#                     to avoid bus level jitters
+# Le lien SDIO vers le C6 attend sur des queues/semaphores FreeRTOS ; a 100 Hz
+# chaque attente s'arrondit au tick de 10 ms. C'est coherent avec le RTT mesure
+# a travers ce lien : 34560 o de fenetre / 980 000 o/s = 35 ms, soit un multiple
+# du tick et non une latence radio (RSSI -50 a -66 dBm sans effet, cf. le bloc
+# LWIP_TCP_WND_DEFAULT plus bas). Le cout est l'ISR de tick x10, negligeable sur
+# deux coeurs a 360 MHz face au drain TCP.
+# Mesure du 2026-08-03, premiere session apres le passage a 1000 Hz :
+# 1080-1165 Ko/s soutenus, 1224 Ko/s en pic, 15-17 fps — contre un plafond note
+# a ~980 Ko/s le 2026-07-31 (« insensible A TOUT ») et ~1035 Ko/s au mieux avant
+# la migration. Et cela A RSSI PLUTOT MOINS BON (-65/-68 dBm contre -50/-66 a
+# l'epoque). C'est le seul changement sur ce chemin, mais l'A/B n'a pas ete fait
+# a l'heure pres : traiter comme un fort indice, pas comme une preuve.
+# Repartition CPU dans cette session : C0=91-93 % avec mjpeg/0=55 %,
+# sdio_read=18 %, tcpip=17 %, sdio_proce=9 %, sdio_write=6 %.
+CONFIG_FREERTOS_HZ=1000
+
+# ESP-Hosted's SDIO transport mempool (Tx/Rx queue=20 each, the component's
+# own default) allocates from internal DMA-capable RAM by default. Combined
+# with PSRAM's own internal reservations, that starved internal RAM enough
+# to make the very first FreeRTOS task ("main") fail to create at boot
+# (assert failed: esp_startup_start_app app_startup.c:86). This flag moves
+# those transport buffers to DMA-capable PSRAM instead (falls back to
+# internal RAM on failure) — see esp_hosted's Kconfig help for
+# ESP_HOSTED_MEMPOOL_PREFER_SPIRAM, which only applies once CONFIG_SPIRAM=y.
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
+
+# LVGL font support for home/camera screens (Task 1: Screens + buttons)
+CONFIG_LV_FONT_MONTSERRAT_24=y
+
+# Home Assistant local (https://192.168.1.x:8123) : certificat non signé par
+# une CA publique — esp-tls refuse toute connexion TLS sans option de
+# vérification (ESP_ERR_MBEDTLS_SSL_SETUP_FAILED). Autorise VERIFY_NONE quand
+# aucun certificat n'est fourni dans esp_tls_cfg_t. Réseau LAN uniquement.
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+
+# Console primaire = USB Serial JTAG, PAS l'UART0.
+# ESP_LOGx écrit de façon bloquante : sur UART0 à 115200 bauds (8N1), un octet
+# coûte 86,8 µs, donc une ligne de 100 caractères gèle la tâche appelante
+# pendant ~8,7 ms. Ce coût était payé même si rien n'était branché sur les
+# broches UART physiques — le monitoring passe par le port USB-JTAG natif du
+# P4 (COM7). Dans le chemin de réception RTP, ces millisecondes se traduisaient
+# directement en fragments FU-A perdus pendant les rafales keyframe.
+# L'USB CDC n'a pas de débit série à respecter : plus de blocage proportionnel
+# à la longueur de la ligne. Corollaire : plus rien ne sort sur l'UART0.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# OTA WiFi : flash 16MB réel (l'app fait ~2.8MB, deux slots OTA de 6M ne
+# rentrent pas dans 4MB). Table de partitions custom = otadata + ota_0/ota_1.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+# Puce flash Boya, signalee au boot :
+#   W spi_flash: Detected boya flash chip but using generic driver.
+# Le pilote generique ne sait ni poser le bit QE ni gerer les registres de
+# protection de ce fabricant — c'est le prerequis du mode QIO ci-dessous.
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+# Flash en DIO. **NE PAS PASSER EN QIO** — essaye et mesure le 2026-08-03, c'est
+# la difference entre une video et un diaporama :
+#   QIO : rssi = -87 a -92 dBm,  72 Ko/s,  1-2 fps, `read=997ms/s`, C0 a 11 %
+#   DIO : rssi = -65 a -68 dBm, 1080-1224 Ko/s, 15-17 fps
+# Meme carte, meme piece, meme camera, A/B a quelques heures d'intervalle, le
+# mode flash pour seule variable. 25 dB.
+# QIO fonctionne pourtant parfaitement cote flash (« qio_mode: Enabling default
+# flash chip QIO » puis « SPI Mode : QIO » au boot) et l'argument de depart reste
+# valable sur le papier : 2,9 Mo executes en XIP derriere seulement 128 Ko de
+# cache L2, DIO n'utilisant que 2 des 4 lignes de donnees a 80 MHz.
+# Ce qu'on paye : 4 lignes commutant a 80 MHz a quelques millimetres de l'antenne
+# du C6. La 30e harmonique tombe a 2,4 GHz et desensibilise le recepteur ; la
+# RSSI d'un ESP est estimee par l'AGC, elle suit donc le plancher de bruit.
+# Signature a reconnaitre si ca revient par un autre chemin (horloge SPI, PSRAM,
+# DSI) : debit effondre AVEC le CPU au repos et `read=…ms/s` proche de 1000 —
+# la tache mjpeg attend la socket, rien n'arrive. Chercher la radio, pas le code.
+# CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Anti-brique : la nouvelle image boote en PENDING_VERIFY ; si elle ne se
+# déclare pas valide (wifi+mqtt OK), le bootloader revient à l'ancien slot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# esp_https_ota accepte une URL http:// (binaire hébergé sur HA en LAN, pas de
+# TLS -> économise ~40K SRAM interne, déjà tendue par la pile WebRTC).
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# Débit du flux MJPEG entrant : le plafond n'était ni la radio (RSSI -55 dBm) ni
+# le CPU (drop=0, rendu à 32 fps de capacité) mais la fenêtre de réception TCP.
+# Par défaut WND=5760 o = 4 x MSS : go2rtc n'a jamais plus de 5,7 Ko en vol et
+# attend l'ACK. Débit = WND / RTT = 5760 / 13 ms ~= 440 Ko/s — exactement le
+# plafond mesuré (408-436 Ko/s), lien quasi vide le reste du temps. Un JPEG
+# grossit avec le mouvement (28 Ko -> 52 Ko) donc à débit bloqué les fps
+# s'effondrent (15 -> 8) alors que les Ko/s ne bougent pas : c'est la signature.
+# 34560 = 24 x MSS. Le palier précédent (23040) tenait 1,5 Mo/s en moyenne mais
+# s'effondrait à 1,08 Mo/s sur les pics de RTT : en dessous du débit produit par
+# go2rtc, l'excédent s'accumulait dans son tampon d'émission et la vidéo dérivait
+# de plus en plus par rapport au son (TCP étant fiable et ordonné, ce retard ne
+# se résorbe jamais). Ce qui compte n'est donc pas le débit moyen mais le
+# PLANCHER, et une fenêtre plus large est ce qui permet de traverser un pic de
+# RTT sans que le débit s'écroule.
+# L'hypothèse « au-delà le limiteur redevient esp_hosted/SDIO » est démentie par
+# la mesure : 2169 Ko/s encaissés avec drop=0 et pres=0. Inutile pour autant de
+# viser 65535 et d'immobiliser la SRAM interne (60 Ko libres seulement quand
+# WebRTC est ouvert, les pbufs lwip y vivent car
+# CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP est off).
+#
+# 2026-07-31, sous IDF 6.0.1 : palier suivant, 46080 = 32 x MSS. Le plafond
+# mesure s'etait fige a ~980 Ko/s, insensible A TOUT — RSSI de -50 a -66 dBm,
+# charge du coeur 0 de 74 % a 100 %, affinite de la tache tcpip changee puis
+# annulee. 34560 / 980 000 = 35 ms, soit exactement le RTT a travers le lien
+# SDIO + co-processeur C6 : c'est bien la fenetre qui borne, pas le CPU.
+# La preuve par l'absurde : avec tcpip epinglee sur le coeur 1, le coeur 0
+# gardait ~26 % d'inactivite et le debit n'a pas bouge d'un octet.
+# Consequence a 13 fps : 980 / 13 = 75 Ko par image, alors que go2rtc en produit
+# 20 par seconde (1500 Ko/s emis pour 980 recus). L'excedent s'empile chez lui
+# et la video derive par rapport au son.
+# Pas de +33 % et non x2 : les pbufs vivent en SRAM interne et il n'en restait
+# que 32-50 Ko libres en session. Surveiller la ligne « SRAM interne libre » du
+# log CPU apres tout nouvel elargissement.
+CONFIG_LWIP_TCP_WND_DEFAULT=46080
+# Doit suivre WND : cette mbox compte les pbufs empilés vers la socket. Règle
+# IDF : >= WND / MSS = 32. Sous-dimensionnée, elle déborderait et ferait jeter
+# les paquets — le WND élargi ne servirait à rien.
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=48
+
+# Expose TaskStatus_t::xCoreID : sans lui, le dump CPU par tâche
+# (sys_stats::log_task_cpu) ne peut pas dire QUEL cœur une tâche IDF interne
+# (tiT, wifi, esp_hosted) sature — or c'est précisément la question quand un
+# cœur est à 100 % alors que le rendu, lui, ne décroche pas (drop=0).
+CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID=y
+
+# --- DTLS-SRTP pour esp_peer (WebRTC audio + micro) ---
+# ESP-IDF 6.0 embarque mbedTLS 4.0.0. En 3.x l'écriture de certificats X.509 était
+# compilée inconditionnellement ; en 4.0 elle passe derrière MBEDTLS_X509_CREATE_C
+# (default n), qui commande MBEDTLS_X509_CRT_WRITE_C (default y mais
+# `depends on MBEDTLS_X509_CREATE_C`). Sans ce gate, esp_peer/src/dtls_srtp_v6.c ne
+# compile pas (mbedtls_x509write_crt_* en implicit declaration) : pas de certificat
+# auto-signé, donc pas de DTLS-SRTP, donc ni audio descendant ni micro. Activer
+# X509_CRT_WRITE_C directement ne sert à rien — la dépendance non satisfaite
+# l'annule sans message.
+CONFIG_MBEDTLS_X509_CREATE_C=y
+# Les deux suivantes étaient déjà à y, mais uniquement dans le sdkconfig généré :
+# déclarées ici, elles survivent à toute régénération.
+CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
+CONFIG_MBEDTLS_SSL_DTLS_SRTP=y
+
+# --- Correctifs post-migration ESP-IDF 6.0.1 (relevés sur docs/6.0.1.log) ---
+# Le Kconfig d'ESP-IDF 6.0 active la vérification ECDSA matérielle par défaut
+# (default y sur SOC_ECDSA_SUPPORTED). Or ce périphérique n'existe qu'à partir
+# du silicium P4 rev v3 et cette carte est en rev v1.3 : chaque vérification
+# logue « ECDSA peripheral not supported on this chip revision » en rouge avant
+# de retomber en logiciel (esp_ecdsa_transparent_verify_hash_start renvoie
+# PSA_ERROR_NOT_SUPPORTED, donc PSA bascule seul). Purement du bruit UART, mais
+# du bruit rouge et trompeur à chaque poignée de main TLS vers Home Assistant.
+CONFIG_MBEDTLS_HARDWARE_ECDSA_VERIFY=n
+# Mode de test de débit d'esp_hosted, active PAR ACCIDENT lors de la migration
+# (son Kconfig dit pourtant `default n` ; le bloc `help` mal indente qui suit y
+# est probablement pour quelque chose avec esp-idf-kconfig v3). Symptome dans le
+# log : « transport: raw_tp_dir[h2s] » au lieu de « raw_tp_dir[-] », plus une
+# tache de stats et un « Raw Throughput testing not enabled on slave ». Ne
+# detourne pas les donnees WLAN (TEST_RAW_TP ne garde qu'un compteur sur
+# ESP_TEST_IF dans sdio_drv.c) mais n'a rien a faire dans un firmware de prod.
+CONFIG_ESP_HOSTED_RAW_THROUGHPUT_TRANSPORT=n
+# Meme famille que le mode ci-dessus : outillage de developpement d'esp_hosted
+# actif par defaut. Le CLI enregistre au boot crash / reboot / mem-dump /
+# task-dump / cpu-dump / heap-trace / sock-dump / host-power-save (visible dans
+# le log « esp_cli: Registering command: ... ») et le moniteur memoire ajoute sa
+# propre tache periodique. Aucun de ces points d'entree n'est atteignable ici :
+# la console USB-JTAG ne sert qu'a lire les logs. Ce sont des tâches, des piles
+# et de la flash pour rien dans un firmware de prod.
+CONFIG_ESP_HOSTED_CLI_ENABLED=n
+CONFIG_ESP_HOSTED_MEM_MONITOR=n
+
+# NE PAS epingler la tache lwip `tcpip` sur le coeur 1 -- essaye et MESURE le
+# 2026-07-31, c'est strictement pire. `CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU1=y`
+# donne, a debit identique (~990 Ko/s dans les deux cas) :
+#   avant (NO_AFFINITY) : mjpeg/0 = 55-57 %, dec 11-12 ms, band 4-5 ms
+#   apres (tcpip -> C1) : mjpeg/0 = 70-72 %, dec 12-13 ms, band 6-8 ms
+# +15 points de CPU sur le coeur 0 pour zero octet de plus. La tache `mjpeg`
+# (epinglee coeur 0) et `tcpip` se reveillent mutuellement a chaque paquet : les
+# separer transforme chaque recv() en aller-retour inter-coeurs (IPI + trafic de
+# coherence de cache sur les pbufs). Le meme effet ralentit le flush LVGL.
+#
+# Enseignement a garder : le plafond de ~990 Ko/s N'EST PAS le CPU du coeur 0.
+# Lui rendre 30 % de temps libre ne fait pas monter le debit d'un octet. Chercher
+# ailleurs (fenetre TCP / RTT a travers le lien SDIO+C6, ou debit produit par
+# go2rtc) avant de retoucher a une affinite.
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_NO_AFFINITY=y
+
+# Mode cle USB : sans ce gate, les fonctions tinyusb_msc_* lient quand meme
+# mais la classe MSC n'entre pas dans les descripteurs -- le PC n'enumererait
+# aucun volume, sans le moindre message d'erreur cote ESP.
+CONFIG_TINYUSB_MSC_ENABLED=y
+# Tampon des transferts MSC. 8 Ko au lieu des 4 Ko par defaut --
+# de la SRAM interne DMA, mais allouee seulement a l installation du pilote,
+# donc uniquement pendant le mode et jamais en meme temps qu une session WebRTC
+# (qui, elle, en consomme deja ~71 Ko). Les 32 Ko des mesures d Espressif ne
+# servent a rien ici : on transfere un WAV, pas un film.
+CONFIG_TINYUSB_MSC_BUFSIZE=8192
+
+# libc : picolibc CONSERVE (gain mesure ~6,8 Ko de SRAM interne libre au boot,
+# 103739 o contre 96891 o avec newlib). C'etait la seule vraie raison de migrer
+# en ESP-IDF 6.0.
+#
+# MAIS sa stdio bufferisee a un debordement d'UN octet (__bufio_put,
+# picolibc bufio.c:183) : le tampon que fopen() alloue fait BUFSIZ = 128 octets
+# et vit sur le tas, l'octet de trop ecrase le canari du bloc voisin. Le flux
+# fautif est le fichier de journal SD (sys/sd_log.cpp), qui ecrit en continu au
+# demarrage. Confinement : sd_log fournit son propre tampon via setvbuf, declare
+# plus petit qu'il n'est. Le bug amont n'est PAS corrige, il est rendu inoffensif.
+#
+# Repli sur CONFIG_LIBC_NEWLIB=y si le confinement pose probleme : une ligne,
+# aucun autre changement.
+# Analyse complete : docs/2026-07-31-corruption-tas-picolibc.md
+CONFIG_LIBC_PICOLIBC=y
+
+# LVGL -- cache des masques d'ombre. A 0 (defaut) le flou gaussien de chaque
+# ombre est recalcule a CHAQUE dessin. Le theme par defaut pose une ombre sur
+# tout lv_button (lv_theme_default.c : shadow_width LV_DPX(3) = 2 px a DPI 130,
+# offset LV_DPX(4) = 3 px). Nos ecrans la neutralisent widget par widget, mais
+# pas les widgets systeme (liste de dropdown, msgbox). 8 couvre largement les
+# 2 px du theme pour un cout memoire negligeable.
+CONFIG_LV_DRAW_SW_SHADOW_CACHE_SIZE=8
+
+# LVGL -- theme par defaut en mode SOMBRE et a plat.
+# DARK : tous les widgets qui dependent du theme (interrupteurs, curseurs,
+# listes deroulantes, onglets, clavier, boites de dialogue) vivent sur des
+# ecrans SOMBRES -- en clair ils sortaient gris pale sur fond anthracite. Les
+# deux ecrans clairs (Meteo, Agenda) peignent leurs conteneurs eux-memes.
+# Bonus decisif : lv_theme_default.c ne
+# pose son ombre floutee sur lv_button que dans la branche CLAIRE, le mode
+# sombre la supprime donc a la source pour tous les widgets.
+# GROW / TRANSITION_TIME : un appui declenchait un agrandissement anime puis une
+# transition de style de 80 ms, soit une salve de repaints par toucher. Sur ce
+# panneau un repaint plein cadre coute ~52 ms rien qu'en rotation PPA.
+# L'accent lui-meme (vert/orange) est choisi dans bsp.cpp : Kconfig n'expose pas
+# les couleurs du theme.
+CONFIG_LV_THEME_DEFAULT_DARK=y
+# CONFIG_LV_THEME_DEFAULT_GROW is not set
+CONFIG_LV_THEME_DEFAULT_TRANSITION_TIME=0
+
+# =====================================================================
+# Reglages qui n'existaient QUE dans le sdkconfig genere
+# ---------------------------------------------------------------------
+# Aucun de ces blocs ne change le firmware d'aujourd'hui : ils y sont deja.
+# Ils sont ecrits ici pour survivre a une regeneration du sdkconfig (un
+# `set-target` accidentel, un clone neuf, une resolution de conflit git).
+# Chacun a coute un diagnostic ; les perdre silencieusement les ferait revenir.
+# =====================================================================
+
+# Allocateur mbedTLS. Le defaut IDF est MBEDTLS_INTERNAL_MEM_ALLOC : toute la
+# poignee de main DTLS se sert alors dans la SRAM interne, dont il ne reste
+# qu'une soixantaine de Ko une fois WebRTC ouvert. Symptome exact du retour en
+# arriere : `esp_peer_open()` renvoie -1 a l'ouverture du backchannel micro
+# (OOM interne, pas une erreur de protocole).
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+
+# Optimisation. Le defaut IDF est COMPILER_OPTIMIZATION_DEBUG (-Og) avec les
+# assertions actives. Le pipeline vidéo est mesure a -O2 : le decodage JPEG et
+# la rotation PPA n'ont pas la marge pour -Og.
+# Corollaire des assertions desactivees, et c'est pour ca que la regle existe :
+# ESP_ERROR_CHECK() ne verifie plus rien, il faut tester les esp_err_t a la main.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
+
+# Ligne de cache L2 : 64 octets, JAMAIS 128. Les 128 accelerent le decodage
+# JPEG mais esp_hosted code en dur un alignement DMA de 64 : la liaison SDIO se
+# corrompt et la carte redemarre sur « Failed to send data ». C'etait la vraie
+# cause des reboots SDIO — pas l'ecart de version entre le firmware C6 (2.3.0)
+# et l'hote (2.12.x), dont l'avertissement au boot est benin.
+CONFIG_CACHE_L2_CACHE_LINE_64B=y
+
+# Le silicium est pre-v3 (chip revision v1.3 au boot) : l'option 400 MHz est
+# masquee dans le Kconfig, 360 est le plafond materiel et non un choix.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+
+# Icones meteo Lottie + capture d'ecran LVGL. Defaut LVGL : n pour les deux.
+# Les perdre casse la compilation sur `lv_lottie_create` /
+# `lv_snapshot_take_to_draw_buf` — une erreur qui ne pointe pas du tout vers
+# sdkconfig et fait perdre du temps.
+CONFIG_LV_USE_LOTTIE=y
+CONFIG_LV_USE_THORVG_INTERNAL=y
+CONFIG_LV_USE_SNAPSHOT=y
+
+# Statistiques CPU par tache (sys::sys_stats). Defaut IDF : n pour les deux.
+# Sans elles, `uxTaskGetSystemState` ne renvoie plus les compteurs de temps et
+# la ligne « CPU: C0=..% C1=..% » — la seule mesure fiable de charge par coeur —
+# devient muette.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# File de la tache tcpip (defaut 32). Elle est en amont de la mbox socket
+# reglee plus haut a 48 : la laisser a 32 replacerait le goulot juste avant le
+# point qu'on vient d'elargir.
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
+
+# Revision minimale du silicium : v0.1, conforme au v1.3 de cette carte.
+CONFIG_ESP32P4_REV_MIN_1=y
+
+# Allocateur LVGL en PSRAM (components/bsp/lv_mem_psram.c). Avec l'allocateur
+# clib, tout objet/style/texte LVGL < 16 Ko (SPIRAM_MALLOC_ALWAYSINTERNAL)
+# partait en SRAM interne. Mesure le 2026-11-07 : SRAM interne libre au boot
+# 62 -> 307 Ko, minimum en session 20 -> 248 Ko ; C0 22 -> 15 %, C1 14 -> 7 %,
+# mutex LVGL moyen 2,9 -> 2,4 ms. C'est la SRAM que reclame le DTLS.
+CONFIG_LV_USE_CUSTOM_MALLOC=y
+
+# 3 arrets de degrade (defaut LVGL : 2) pour le fond violet -> magenta -> orange
+# de la page Meteo en theme Vice (ui/theme.cpp). Sans cout de rendu : la valeur
+# ne dimensionne que le tableau `stops` de lv_grad_dsc_t (+4 octets par
+# descripteur), le degrade etant calcule par ligne quel que soit le nombre
+# d'arrets. Les icones Lottie passent par ThorVG, pas par ce chemin.
+CONFIG_LV_GRADIENT_MAX_STOPS=3

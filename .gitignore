@@ -1,0 +1,12 @@
+build/
+managed_components/
+nvs_values.csv
+nvs.bin
+.cache/clangd/
+# Local, never committed: per-installation secrets and editor state
+main/app_secrets.h
+sdkconfig.old
+.vscode/
+.serena/
+.superpowers/
+*.log
