@@ -1,0 +1,40 @@
+dependencies:
+  # esp_h264 retiré : le décodage H.264 logiciel a été remplacé par le MJPEG
+  # décodé par le moteur JPEG matériel du P4 (le P4 n'a PAS de décodeur H.264
+  # matériel, seul un encodeur). Plus aucun symbole esp_h264_* n'est référencé.
+  # cJSON (net/weather_parse.cpp, net/gcal_parse.cpp) : le composant `json` a été
+  # retiré d'ESP-IDF en 6.0 et déplacé vers le registre sous ce nom.
+  espressif/cjson: "^1.7.18"
+  # esp-mqtt (sys/mqtt_ctrl.cpp) : même sort que `json`, sorti d'ESP-IDF en 6.0.
+  espressif/mqtt: "^1.1.0"
+  # Plancher relevé à 1.5.3 : le lock figeait 1.5.0, dont le chemin DTLS pour
+  # ESP-IDF 6 / mbedTLS 4 (src/dtls_srtp_v6.c, psa_generate_key +
+  # mbedtls_pk_wrap_psa) est neuf et échouait au handshake serveur
+  # (MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE) — cf. docs/6.0.1.log.
+  espressif/esp_peer: "^1.5.3"
+  espressif/esp_wifi_remote: ">=0.1.0"
+  # Épinglé en 2.12.x DÉLIBÉRÉMENT. esp_hosted 3.x est une réécriture du transport
+  # (arborescence eh_common/eh_cp_*) qui exige un firmware co-processeur C6 assorti :
+  # le C6 de ce visiophone tourne en 2.x. La borne `<3.0` n'existe dans le manifeste
+  # d'esp_wifi_remote qu'à partir de sa 1.6.3 ; le lock fige la 1.6.1, qui ne la porte
+  # pas, donc rien n'empêcherait le solveur de partir en 3.x sans cette ligne.
+  # Ne relever qu'en reflashant le C6 et en revalidant le débit SDIO.
+  espressif/esp_hosted: "~2.12"
+  lvgl/lvgl: "~9.5.0"
+  espressif/esp_lcd_touch: ">=1.2.1"
+  # espressif/es8311 retiré : le driver ES8311 réellement utilisé est celui
+  # d'esp_codec_dev (es8311_codec.h / es8311_codec_new dans bsp.cpp) ; le
+  # composant autonome (es8311.h) n'était référencé nulle part. Il bloquait de
+  # plus toute migration vers ESP-IDF 6.x (son manifeste déclare idf <6.0 et
+  # aucune version plus récente n'est publiée).
+  espressif/esp_codec_dev: "^1.3.4"
+  # Mode clé USB (sys/usb_msc.cpp) : expose la carte microSD en stockage de
+  # masse sur le port OTG High-Speed. Majeure 2 DÉLIBÉRÉE — la 1.x nomme
+  # l'entrée MSC/SDMMC `tinyusb_msc_storage_init_sdmmc()`, la 2.x
+  # `tinyusb_msc_new_storage_sdmmc()` : un glissement de majeure casse la
+  # compilation.
+  espressif/esp_tinyusb: "^2.2"
+  # Annulation d'écho acoustique (esp_aec.h) pour le backchannel micro : sans
+  # elle le visiteur s'entend dans la platine (HP de la tablette -> micro).
+  # Seule la bibliothèque AEC est utilisée, aucun modèle (WakeNet/MultiNet).
+  espressif/esp-sr: "~2.5.5"
