@@ -12,7 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build firmware
         shell: bash
+        env:
+          # esp_hosted's Kconfig reads $(ESP_IDF_VERSION); empty, kconfgen fails
+          # with "Missing required kconfig option".
+          ESP_IDF_VERSION: "6.0"
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . "$IDF_PATH/export.sh"
           idf.py build
       - name: Upload firmware
