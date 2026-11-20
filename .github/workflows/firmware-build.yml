@@ -19,6 +19,11 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . "$IDF_PATH/export.sh"
+          # Same tool versions as the reference Windows install (a newer
+          # component manager re-evaluates esp_hosted's optional USB
+          # dependencies and stops on unknown Kconfig options).
+          python -m pip show idf-component-manager esp-idf-kconfig | grep -E '^(Name|Version)'
+          python -m pip install -q "idf-component-manager==3.0.3" "esp-idf-kconfig==3.11.1"
           idf.py build
       - name: Upload firmware
         uses: actions/upload-artifact@v4
