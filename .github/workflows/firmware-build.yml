@@ -32,4 +32,9 @@ jobs:
       - name: Show build logs on failure
         if: failure()
         shell: bash
-        run: tail -n 80 build/log/idf_py_std*_output_* || true
+        run: |
+          tail -n 80 build/log/idf_py_std*_output_* || true
+          git status --short
+          git diff --stat
+          for f in managed_components/*/idf_component.yml; do echo "$f: $(grep -m1 '^version' "$f")"; done
+          grep -rln 'HOST_USB_CDC_ACM_MANIFEST' managed_components || true
