@@ -169,7 +169,7 @@ CONFIG_MBEDTLS_X509_CREATE_C=y
 CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
 CONFIG_MBEDTLS_SSL_DTLS_SRTP=y
 
-# --- Correctifs post-migration ESP-IDF 6.0.1 (relevés sur docs/6.0.1.log) ---
+# --- Correctifs post-migration ESP-IDF 6.0.1 (relevés au premier boot) ---
 # Le Kconfig d'ESP-IDF 6.0 active la vérification ECDSA matérielle par défaut
 # (default y sur SOC_ECDSA_SUPPORTED). Or ce périphérique n'existe qu'à partir
 # du silicium P4 rev v3 et cette carte est en rev v1.3 : chaque vérification
@@ -236,7 +236,7 @@ CONFIG_TINYUSB_MSC_BUFSIZE=8192
 #
 # Repli sur CONFIG_LIBC_NEWLIB=y si le confinement pose probleme : une ligne,
 # aucun autre changement.
-# Analyse complete : docs/2026-07-31-corruption-tas-picolibc.md
+# Cf. docs/hardware-notes.md (ESP-IDF 6.0, picolibc)
 CONFIG_LIBC_PICOLIBC=y
 
 # LVGL -- cache des masques d'ombre. A 0 (defaut) le flou gaussien de chaque

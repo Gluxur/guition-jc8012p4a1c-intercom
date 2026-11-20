@@ -222,7 +222,7 @@ bool open_file(const char *name) {
     return false;
   }
   // CONFINEMENT d'un bug amont, pas une optimisation. Ne pas retirer sans lire
-  // docs/2026-07-31-corruption-tas-picolibc.md.
+  // docs/hardware-notes.md (picolibc).
   //
   // `__bufio_put` de picolibc (bufio.c:183, toolchain ESP-IDF 6.0.1) écrit UN
   // octet AU-DELÀ du tampon de sortie. Le tampon que fopen() alloue lui-même

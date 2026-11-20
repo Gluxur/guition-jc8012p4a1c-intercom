@@ -29,3 +29,7 @@ jobs:
             build/bootloader/bootloader.bin
             build/partition_table/partition-table.bin
             build/flash_args
+      - name: Show build logs on failure
+        if: failure()
+        shell: bash
+        run: tail -n 80 build/log/idf_py_std*_output_* || true

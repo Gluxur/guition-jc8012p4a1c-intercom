@@ -62,7 +62,7 @@ void set_present(bool p) {
 }
 
 // Vignette : un pixel sur 4 dans chaque axe, 8 bits de poids fort. POSIX
-// open/write et non FILE* : cf. CLAUDE.md piège 15 (picolibc déborde d'un
+// open/write et non FILE* : cf. docs/hardware-notes.md (picolibc déborde d'un
 // octet du tampon FILE) — inutile de rouvrir ce risque pour un fichier jetable.
 void write_snapshot(const uint8_t *frame) {
   if (bsp::Bsp::instance().sd_state() != bsp::SdState::kMounted ||

@@ -192,8 +192,7 @@ void peer_loop_task(void *arg) {
 
 // Pas de retry automatique côté micro (contrairement à la vidéo) :
 // fonctionnalité secondaire, l'utilisateur reclique le bouton s'il veut
-// réessayer — cf. spec
-// docs/superpowers/specs/2026-07-03-mic-backchannel-design.md.
+// réessayer.
 int on_peer_msg(esp_peer_msg_t *msg, void *ctx) {
   (void)ctx;
   if (msg->type != ESP_PEER_MSG_TYPE_SDP) {

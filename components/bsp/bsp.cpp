@@ -146,8 +146,7 @@ constexpr int kLcdVbp = 8;
  * vfp=120 porte la fenêtre à 2,9 ms : plus aucune perte mesurée.
  * Contrepartie assumée : refresh = 40e6/(880×1412) = 32,2 Hz.
  * Augmenter dpi_clk sans augmenter vfp d'autant RAMÈNE le bug (la fenêtre est
- * en µs, pas en lignes). Diagnostic complet :
- * docs/superpowers/specs/2026-07-21-dsi-frame-drop-flicker-diagnosis.md */
+ * en µs, pas en lignes). Cf. docs/hardware-notes.md (Display). */
 constexpr int kLcdVfp = 120;
 
 constexpr i2c_port_t kTouchI2cPort = I2C_NUM_0;
@@ -357,8 +356,7 @@ void Bsp::handle_flush(lv_display_t *disp, const lv_area_t *area,
      * tourne donc que ce qui a réellement changé — la variante RENDER_MODE_FULL
      * essayée en 35cec64 tournait 1 Mpx (42,6 ms !) pour un simple label, et le
      * tearing qu'elle prétendait corriger venait en fait des pertes de trame
-     * DSI (cf. docs/superpowers/specs/2026-07-21-dsi-frame-drop-flicker-
-     * diagnosis.md, corrigées par kLcdVfp).
+     * DSI (cf. docs/hardware-notes.md, corrigées par kLcdVfp).
      * 270° CCW = 90° CW : même transform que l'ancienne boucle logicielle. */
     uint32_t w = static_cast<uint32_t>(lv_area_get_width(area));
     uint32_t h = static_cast<uint32_t>(lv_area_get_height(area));

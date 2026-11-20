@@ -24,7 +24,7 @@ struct View {
   // Réarme les framebuffers après une interruption du flux : pendant le bandeau
   // « flux perdu », LVGL a repris la main et repeint l'écran dans le SEUL
   // buffer en cours de scan-out. Sans ce rappel, la reprise vidéo laisserait
-  // l'autre buffer périmé (cf. piège n°8). Typiquement prepare_stream().
+  // l'autre buffer périmé (cf. docs/hardware-notes.md, deux framebuffers). Typiquement prepare_stream().
   void (*restore)();
 };
 

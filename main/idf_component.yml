@@ -10,7 +10,7 @@ dependencies:
   # Plancher relevé à 1.5.3 : le lock figeait 1.5.0, dont le chemin DTLS pour
   # ESP-IDF 6 / mbedTLS 4 (src/dtls_srtp_v6.c, psa_generate_key +
   # mbedtls_pk_wrap_psa) est neuf et échouait au handshake serveur
-  # (MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE) — cf. docs/6.0.1.log.
+  # (MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE).
   espressif/esp_peer: "^1.5.3"
   espressif/esp_wifi_remote: ">=0.1.0"
   # Épinglé en 2.12.x DÉLIBÉRÉMENT. esp_hosted 3.x est une réécriture du transport

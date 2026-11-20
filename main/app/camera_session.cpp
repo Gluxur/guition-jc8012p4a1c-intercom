@@ -536,7 +536,7 @@ void teardown() {
 
   // 10 s et non 1 : peer_loop peut être DANS on_peer_msg (attente du canal
   // <= 6 s puis POST <= ~5 s, timeout par opération). À 1 s le join ratait et
-  // le peer entier (SRAM DTLS) était abandonné — vu dans docs/6.0.1-2.log ; le
+  // le peer entier (SRAM DTLS) était abandonné — vu au boot sous IDF 6.0.1 ; le
   // micro avait déjà été porté à 6 s pour la même raison.
   const bool peer_joined =
       xSemaphoreTake(s_peer_task_stopped, pdMS_TO_TICKS(10000)) == pdTRUE;

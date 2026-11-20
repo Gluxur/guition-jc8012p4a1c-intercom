@@ -58,8 +58,7 @@ lv_timer_t *s_poll_timer = nullptr;
 // (donc les transactions PPA du flush) est repoussé au prochain tick du
 // timer LVGL, hors de toute activité SDIO récente. Découplage testé après
 // des blocages PPA reproductibles ("PPA SRM sans fin de transaction") juste
-// après un fetch — cf. docs/superpowers/plans/2026-07-30-google-calendar-
-// agenda.md pour l'historique du diagnostic.
+// après un fetch.
 std::atomic<bool> s_refresh_pending{false};
 
 Mode s_mode = Mode::kWeek;

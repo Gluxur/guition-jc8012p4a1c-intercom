@@ -44,7 +44,7 @@ constexpr uint32_t kCaptureRetryMs = 20;
 // tampon que fopen() alloue lui-même vit sur le tas — l'octet de trop y écrase
 // le canari du bloc voisin et fait paniquer un free() sans rapport, des minutes
 // plus tard. Même parade que sd_log::open_file, cf.
-// docs/2026-07-31-corruption-tas-picolibc.md. Statique (.bss) : aucune
+// docs/hardware-notes.md (picolibc). Statique (.bss) : aucune
 // métadonnée d'allocateur à proximité. Un seul fichier ouvert à la fois ici.
 constexpr size_t kFileBufDeclared = 1024;
 constexpr size_t kFileBufSlack = 32;
