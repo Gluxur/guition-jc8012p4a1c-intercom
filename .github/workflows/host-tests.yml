@@ -1,0 +1,19 @@
+name: Host unit tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build g++
+      - name: Configure
+        run: cmake -S test -B test/build -G Ninja
+      - name: Build
+        run: cmake --build test/build
+      - name: Test
+        run: ctest --test-dir test/build --output-on-failure
