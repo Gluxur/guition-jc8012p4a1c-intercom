@@ -14,6 +14,13 @@ MQTT and Home Assistant answer.
 - The ESP-IDF component manager downloads the dependencies listed in
   `main/idf_component.yml` on the first build (network required). Versions are
   pinned by `dependencies.lock`.
+- If configure stops with `Missing required kconfig option after retry`
+  (seen with the `espressif/idf:v6.0.1` Docker image, which ships
+  `esp-idf-kconfig` 3.8.1), upgrade the Python tools inside the IDF
+  environment — these are the versions the project is built with:
+  ```bash
+  python -m pip install "idf-component-manager==3.0.3" "esp-idf-kconfig==3.11.1"
+  ```
 
 ## 2. Build
 
