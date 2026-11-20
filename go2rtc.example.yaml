@@ -1,0 +1,65 @@
+# Reference go2rtc configuration for the ESP32-P4 video intercom.
+#
+# Tested with the go2rtc Home Assistant add-on by AlexxIT, version 1.9.15
+# (file: /config/go2rtc.yaml, API port 1984). Replace every <...> placeholder.
+#
+# The firmware consumes exactly three streams. Their names are compiled in
+# main/app_config.h (kGo2rtcAudioSrc, kGo2rtcMicSrc, kGo2rtcMjpeg2Src): keep
+# them, or change both sides.
+#
+# The examples use a Dahua VTO door station (RTSP + ONVIF backchannel). Any
+# camera that go2rtc can read works for video and incoming audio; talking back
+# to the street requires a source with a two-way audio backchannel.
+
+streams:
+  # Main door-station stream. `#backchannel=0`: this consumer must NOT take the
+  # door station's single talk channel, otherwise the microphone stream below
+  # cannot get it.
+  door_main_stream:
+    - rtsp://<user>:<password>@<door-station-ip>:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif#backchannel=0
+
+  # Microphone -> street (two-way audio). `#backchannel=1` here, AND the
+  # firmware opens its peer as SEND_RECV: a sendonly offer makes go2rtc treat
+  # the board as a producer and drop its audio.
+  vto_audio_input_only:
+    - rtsp://<user>:<password>@<door-station-ip>:554/cam/realmonitor?channel=1&subtype=1&unicast=true&proto=Onvif#backchannel=1
+
+  # Street -> speaker (audio only, G.711 A-law). WebRTC only carries audio:
+  # video goes through MJPEG below.
+  vto_audio_only:
+    - "ffmpeg:door_main_stream#audio=pcma"
+
+  # Video for the screen: MJPEG, transposed and padded to EXACTLY 800x1280.
+  #
+  # - `transpose=1`: the panel is physically portrait and the P4's PPA does not
+  #   need to rotate anything if the source already is.
+  # - `pad=800:1280`: a source exactly as wide as the panel lets the hardware
+  #   JPEG decoder write straight into the display framebuffer (zero copy).
+  #   Any other width falls back to a PPA blit costing ~20 ms per frame.
+  #   The input here is 1280x720; adapt the pad to your camera so that the
+  #   output is 800x1280.
+  # - `fps=15` + `setpts=(RTCTIME-RTCSTART)...`: production must stay BELOW what
+  #   the board actually receives over Wi-Fi (~1 MB/s sustained). Above that,
+  #   frames pile up in go2rtc's send buffer, video drifts behind audio and the
+  #   delay never recovers. Wall-clock timestamps instead of `-r 15` also stop
+  #   ffmpeg from duplicating frames at ~250 fps when another client joins the
+  #   source and the RTP sequence jumps.
+  # - `-q:v 13`: a daylight JPEG weighs ~70 KB at this quality. Lower q = bigger
+  #   frames = fewer fps.
+  vto_mjpeg2:
+    - "ffmpeg:door_main_stream#video=mjpeg#raw=-q:v 13 -vf setpts=(RTCTIME-RTCSTART)/(TB*1000000),fps=15,transpose=1,pad=800:1280:80:0:black"
+
+# Keep the MJPEG stream encoded at all times: first frame in ~0.2 s instead of
+# 2.3-3.2 s (ffmpeg start-up). Requires go2rtc >= 1.9.11.
+preload:
+  vto_mjpeg2:
+
+webrtc:
+  listen: ":8555"
+  # LAN only. Without this, go2rtc >= 1.9.15 queries a public STUN server on
+  # every interface before answering the SDP offer (~5 s measured) and the
+  # firmware gives up after 4 s: no audio, no microphone.
+  ice_servers: []
+  filters:
+    networks: [udp4, tcp4]
+    ips: [<go2rtc-host-ip>]
