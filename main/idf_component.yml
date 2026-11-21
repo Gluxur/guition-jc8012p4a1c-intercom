@@ -38,3 +38,7 @@ dependencies:
   # elle le visiteur s'entend dans la platine (HP de la tablette -> micro).
   # Seule la bibliothèque AEC est utilisée, aucun modèle (WakeNet/MultiNet).
   espressif/esp-sr: "~2.5.5"
+  # mDNS (net/esphome_api.cpp): Home Assistant discovers the ESPHome native API
+  # through a `_esphomelib._tcp` service; without it the device must be added
+  # by IP by hand.
+  espressif/mdns: "^1.8.0"

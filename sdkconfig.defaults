@@ -335,3 +335,14 @@ CONFIG_LV_USE_CUSTOM_MALLOC=y
 # descripteur), le degrade etant calcule par ligne quel que soit le nombre
 # d'arrets. Les icones Lottie passent par ThorVG, pas par ce chemin.
 CONFIG_LV_GRADIENT_MAX_STOPS=3
+
+# ChaCha20-Poly1305 for the ESPHome native API encryption
+# (Noise_NNpsk0_25519_ChaChaPoly_SHA256, net/noise_nnpsk0.cpp). Off by default
+# in ESP-IDF; Curve25519 and SHA-256 are already on.
+CONFIG_MBEDTLS_CHACHA20_C=y
+CONFIG_MBEDTLS_CHACHAPOLY_C=y
+
+# mDNS (ESPHome API discovery): task stack and allocations in PSRAM. Internal
+# SRAM is what DTLS needs during a call (cf. CLAUDE.md, SRAM vs PSRAM).
+CONFIG_MDNS_TASK_CREATE_FROM_SPIRAM=y
+CONFIG_MDNS_MEMORY_ALLOC_SPIRAM=y

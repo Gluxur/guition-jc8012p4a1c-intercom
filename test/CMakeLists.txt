@@ -54,6 +54,21 @@ FetchContent_MakeAvailable(cjson)
 add_library(cjson_host STATIC "${cjson_SOURCE_DIR}/cJSON.c")
 target_include_directories(cjson_host PUBLIC "${cjson_SOURCE_DIR}")
 
+# --- mbedTLS / PSA Crypto ---------------------------------------------------
+# net/noise_nnpsk0.cpp (ESPHome API encryption) calls PSA Crypto. ESP-IDF 6.0
+# ships mbedTLS 4.0.0; the same release is fetched here, so the host test runs
+# the firmware's exact crypto path. Only the libraries are built (~1 min, once).
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(TF_PSA_CRYPTO_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  mbedtls
+  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-4.0.0/mbedtls-4.0.0.tar.bz2
+  URL_HASH SHA256=2f3a47f7b3a541ddef450e4867eeecb7ce2ef7776093f3a11d6d43ead6bf2827
+)
+FetchContent_MakeAvailable(mbedtls)
+
 # --- Cible de test ----------------------------------------------------------
 add_executable(tests
   test_call_log_parse.cpp
@@ -69,6 +84,9 @@ add_executable(tests
   test_premul_blend.cpp
   test_ota_image_check.cpp
   test_weather_parse.cpp
+  test_esphome_frame.cpp
+  test_esphome_pb.cpp
+  test_noise_nnpsk0.cpp
   # Sources applicatives réelles, compilées pour le host. En ajouter une ici
   # n'est légitime que si elle ne tire aucun header de driver ESP-IDF (stubs/
   # ne couvre que le log et le compteur µs, cf. les commentaires en tête).
@@ -82,7 +100,10 @@ add_executable(tests
   "${APP_DIR}/media/ringtone.cpp"
   "${APP_DIR}/media/wav_parse.cpp"
   "${APP_DIR}/ui/premul_blend.cpp"
+  "${APP_DIR}/net/esphome_frame.cpp"
+  "${APP_DIR}/net/esphome_pb.cpp"
   "${APP_DIR}/net/file_path.cpp"
+  "${APP_DIR}/net/noise_nnpsk0.cpp"
   "${APP_DIR}/net/gcal_parse.cpp"
   "${APP_DIR}/net/weather_parse.cpp"
   "${APP_DIR}/sys/ota_image_check.cpp"
@@ -101,7 +122,7 @@ target_include_directories(tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/stubs"   # remplace esp_log.h & co. sur host
 )
 
-target_link_libraries(tests PRIVATE GTest::gtest_main cjson_host)
+target_link_libraries(tests PRIVATE GTest::gtest_main cjson_host tfpsacrypto)
 
 # strlcpy (BSD, fournie par le newlib d'ESP-IDF) manque au host : cf. le
 # commentaire en tête de stubs/host_compat.h pour le pourquoi du force-include.

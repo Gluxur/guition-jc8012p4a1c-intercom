@@ -9,6 +9,7 @@ idf_component_register(
          "app/call_log_parse.cpp"
          "app/camera_session.cpp"
          "app/ephemeris.cpp"
+         "app/ha_api.cpp"
          "app/ha_discovery_fmt.cpp"
          "app/ha_entities.cpp"
          "app/mic_session.cpp"
@@ -29,11 +30,15 @@ idf_component_register(
          "ui/ui_weather_v3.cpp"
          "ui/lottie_frames.cpp"
          "ui/premul_blend.cpp"
+         "net/esphome_api.cpp"
+         "net/esphome_frame.cpp"
+         "net/esphome_pb.cpp"
          "net/file_path.cpp"
          "net/file_server.cpp"
          "net/gcal.cpp"
          "net/gcal_parse.cpp"
          "net/mjpeg_client.cpp"
+         "net/noise_nnpsk0.cpp"
          "net/signaling.cpp"
          "net/weather.cpp"
          "net/weather_parse.cpp"
@@ -86,4 +91,4 @@ idf_component_register(
              esp_http_server
              espressif__esp_peer bsp esp_mm esp_driver_jpeg mqtt app_update
              esp_https_ota esp_app_format fatfs espressif__esp_tinyusb
-             espressif__esp-sr)
+             espressif__esp-sr espressif__mdns)

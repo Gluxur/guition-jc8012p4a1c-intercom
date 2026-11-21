@@ -13,6 +13,7 @@
 #include "app/audio_pipeline.h"
 #include "app/call_history.h"
 #include "app/camera_session.h"
+#include "app/ha_api.h"
 #include "app/ha_entities.h"
 #include "app/mic_session.h"
 #include "app/presence.h"
@@ -419,7 +420,15 @@ extern "C" void app_main(void) {
   // Caméra de présence AVANT la validation OTA : une image qui planterait dès
   // l'init du CSI ou du capteur doit encore pouvoir revenir en arrière. Après
   // ha_entities : le premier changement d'état y est publié directement.
-  presence::init({[] { ha_entities::publish_now("presence"); }});
+  presence::init({[] {
+    ha_entities::publish_now("presence");
+    ha_api::publish_now("presence");
+  }});
+
+  // ESPHome native API (prototype, alongside MQTT): mDNS + server on 6053.
+  // After Wi-Fi (mDNS registers on the STA netif) and after ha_entities, whose
+  // ring hook it shares.
+  ha_api::init({mqtt_trigger_cb});
 
   // Point de validation "boot sain" = WiFi (déjà connecté) + MQTT connecté.
   // Attente bornée (~30s) : au-delà, on ne valide pas -> rollback au prochain

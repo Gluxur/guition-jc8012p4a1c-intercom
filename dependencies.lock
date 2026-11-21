@@ -34,7 +34,7 @@ dependencies:
       type: service
     version: 1.1.6
   espressif/esp-dl:
-    component_hash: 3608ac32875cb7fa93805fba2372619bde3d8a02cee47c622cf5e91a1308fe92
+    component_hash: bec531351a359de9f49f7bad90038e5328a24d004da56d0a27731f9448ce7af8
     dependencies:
     - name: espressif/dl_fft
       registry_url: https://components.espressif.com
@@ -60,7 +60,7 @@ dependencies:
     - esp32s2
     - esp32s3
     - esp32s31
-    version: 3.3.14
+    version: 3.3.15
   espressif/esp-sr:
     component_hash: 698154c0a94f6c8ac3e1ac669ec3ea741e6f848022b0f89030eddb23f3a31e14
     dependencies:
@@ -206,6 +206,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.6.3
+  espressif/mdns:
+    component_hash: 2fa43caa78cc170842255bc7bf71f306bc815cae12e9496bfb12372423019ac7
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.15.1
   espressif/mqtt:
     component_hash: fb18bc3b65aa8c94693a9811ffc322cca8a65d92d5ec84983d3e385080e3969c
     dependencies:
@@ -217,7 +227,7 @@ dependencies:
       type: service
     version: 1.1.0
   espressif/tinyusb:
-    component_hash: 16c8d774dab1f484d3e0c0f61105624d2424bbae864efd19818baf7b451b41e7
+    component_hash: 95e10bf67a64897daadb95681c032cfbbdc77240931fc23f47709a254a3db290
     dependencies:
     - name: idf
       require: private
@@ -231,7 +241,7 @@ dependencies:
     - esp32p4
     - esp32h4
     - esp32s31
-    version: 0.21.0~2
+    version: 0.21.0~6
   espressif/wifi_remote_over_eppp:
     component_hash: 1fd6968af20f0b19e421f6b519b0a8caf81d689afc3783b564c28559e45f66ef
     dependencies:
@@ -266,8 +276,9 @@ direct_dependencies:
 - espressif/esp_peer
 - espressif/esp_tinyusb
 - espressif/esp_wifi_remote
+- espressif/mdns
 - espressif/mqtt
 - lvgl/lvgl
-manifest_hash: 9370cdeaac9b88237e39a8c1c2d2c8d27abb89e7ff573b4452d7ff8e3057cd99
+manifest_hash: 731d444122b09bbbf7f737bbb7b56d6f447b6e5b5e02ba7feff6fcb1c6a41d2d
 target: esp32p4
 version: 3.0.0
