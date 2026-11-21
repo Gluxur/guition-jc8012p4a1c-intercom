@@ -114,7 +114,7 @@ void render_task(void *arg) {
       // Pas de slot distant à temps : maintenir la cadence audio localement.
       if (ringing && (!is_streaming ||
                       esp_timer_get_time() - last_remote_us > kRemoteGapUs)) {
-        // La sonnerie doit partir dès l'armement (trigger MQTT), sans attendre
+        // La sonnerie doit partir dès l'armement (sonnette HA), sans attendre
         // que le WebRTC soit établi : en streaming, elle ne comble que
         // l'absence d'audio distant (premiers paquets pas encore arrivés).
         play_ring_frame();

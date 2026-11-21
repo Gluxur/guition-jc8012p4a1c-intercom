@@ -1,7 +1,9 @@
-// Décodage pur des réponses Home Assistant (weather.get_forecasts et
-// /api/states/<entity>) — séparé de weather.cpp (HTTP, tâche FreeRTOS, cache
-// sous mutex) pour être compilable et testable par le compilateur du PC :
-// cf. test/test_weather_parse.cpp. Aucune dépendance ESP-IDF au-delà du log.
+// Pure decoding of the weather.get_forecasts action response, as reshaped by
+// the response template of weather.cpp:
+//   {"response": {"forecast": [...], "current": {"state": ..., "attributes": {...}}}}
+// Split from weather.cpp (API call, FreeRTOS task, cache under mutex) so the
+// PC compiler can test it: test/test_weather_parse.cpp. No ESP-IDF dependency
+// beyond the log.
 
 #include "net/weather.h"
 
@@ -43,14 +45,12 @@ bool parse_forecast_json(const char *json, Forecast &out) {
   }
   bool ok = false;
   do {
-    // Premier enfant de service_response = l'entité, quel que soit son nom
-    // exact (pas de couplage à HA_WEATHER_ENTITY ici).
-    cJSON *sr = cJSON_GetObjectItem(root, "service_response");
-    if (!sr || !sr->child) {
-      ESP_LOGE(TAG, "service_response absent ou vide");
+    cJSON *resp = cJSON_GetObjectItem(root, "response");
+    if (!cJSON_IsObject(resp)) {
+      ESP_LOGE(TAG, "response absent");
       break;
     }
-    cJSON *fc = cJSON_GetObjectItem(sr->child, "forecast");
+    cJSON *fc = cJSON_GetObjectItem(resp, "forecast");
     if (!cJSON_IsArray(fc) || cJSON_GetArraySize(fc) == 0) {
       ESP_LOGE(TAG, "forecast absent ou vide");
       break;
@@ -103,10 +103,17 @@ bool parse_current_json(const char *json, CurrentConditions &out) {
     ESP_LOGE(TAG, "état JSON invalide");
     return false;
   }
-  cJSON *state = cJSON_GetObjectItem(root, "state");
+  cJSON *cur =
+      cJSON_GetObjectItem(cJSON_GetObjectItem(root, "response"), "current");
+  if (!cJSON_IsObject(cur)) {
+    ESP_LOGE(TAG, "response.current absent");
+    cJSON_Delete(root);
+    return false;
+  }
+  cJSON *state = cJSON_GetObjectItem(cur, "state");
   if (cJSON_IsString(state))
     strlcpy(out.condition, state->valuestring, sizeof out.condition);
-  cJSON *attrs = cJSON_GetObjectItem(root, "attributes");
+  cJSON *attrs = cJSON_GetObjectItem(cur, "attributes");
   if (attrs) {
     cJSON *t = cJSON_GetObjectItem(attrs, "temperature");
     if (cJSON_IsNumber(t))

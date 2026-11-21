@@ -17,7 +17,7 @@ namespace {
 
 constexpr const char *TAG = "usb_msc";
 
-// Atomique : écrit par la tâche disque de l'UI, lu par esp-mqtt (trigger),
+// Atomique : écrit par la tâche disque de l'UI, lu par la tâche de l'API (sonnette),
 // net_wdt, httpd et cam_stop.
 std::atomic<Status> s_status{Status::kOff};
 char s_error[96] = "";

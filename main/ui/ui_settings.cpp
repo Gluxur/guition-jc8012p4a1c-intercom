@@ -69,9 +69,6 @@ lv_obj_t *s_status = nullptr;
 lv_obj_t *s_ta_ssid = nullptr;
 lv_obj_t *s_ta_wifi_pass = nullptr;
 lv_obj_t *s_ta_host = nullptr;
-lv_obj_t *s_ta_mqtt_user = nullptr;
-lv_obj_t *s_ta_mqtt_pass = nullptr;
-lv_obj_t *s_ta_ha_token = nullptr;
 
 lv_obj_t *s_slider_bl = nullptr;
 lv_obj_t *s_lbl_bl = nullptr;
@@ -202,9 +199,6 @@ void cb_save(lv_event_t *e) {
   read_field(cfg.wifi_ssid, settings::kSsidMax, s_ta_ssid);
   read_field(cfg.wifi_pass, settings::kPassMax, s_ta_wifi_pass);
   read_field(cfg.host, settings::kHostMax, s_ta_host);
-  read_field(cfg.mqtt_user, settings::kUserMax, s_ta_mqtt_user);
-  read_field(cfg.mqtt_pass, settings::kPassMax, s_ta_mqtt_pass);
-  read_field(cfg.ha_token, settings::kTokenMax, s_ta_ha_token);
 
   // Un SSID ou un hôte vide rendrait la carte injoignable, et seul un
   // effacement NVS la récupérerait : on refuse avant d'écrire.
@@ -795,16 +789,10 @@ void create_screen(const ui::Callbacks &cbs) {
   s_ta_ssid = make_field("Wi-Fi SSID", settings::kSsidMax, false, false);
   s_ta_wifi_pass =
       make_field("Wi-Fi mot de passe", settings::kPassMax, true, false);
+  // go2rtc + firmware served by Home Assistant. HA itself needs nothing here:
+  // it discovers the board (ESPHome API over mDNS).
   s_ta_host = make_field("Serveur (IP ou nom)", settings::kHostMax, false,
                          false);
-  s_ta_mqtt_user =
-      make_field("MQTT utilisateur", settings::kUserMax, false, false);
-  s_ta_mqtt_pass =
-      make_field("MQTT mot de passe", settings::kPassMax, true, false);
-  // Jeton affiché en clair (et non masqué comme les mots de passe) : ~250
-  // caractères saisis au doigt sont invérifiables sous des astérisques.
-  s_ta_ha_token =
-      make_field("Jeton Home Assistant", settings::kTokenMax, false, true);
 
   // Créé en dernier : le clavier doit passer au-dessus du formulaire.
   s_keyboard = lv_keyboard_create(s_scr);
@@ -834,9 +822,6 @@ void open_screen_from_event() {
   set_if_changed(s_ta_ssid, cfg.wifi_ssid);
   set_if_changed(s_ta_wifi_pass, cfg.wifi_pass);
   set_if_changed(s_ta_host, cfg.host);
-  set_if_changed(s_ta_mqtt_user, cfg.mqtt_user);
-  set_if_changed(s_ta_mqtt_pass, cfg.mqtt_pass);
-  set_if_changed(s_ta_ha_token, cfg.ha_token);
 
   const uint8_t bl = bsp::Bsp::instance().backlight();
   const int32_t bl_shown = bl < kBacklightMin ? kBacklightMin : bl;

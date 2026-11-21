@@ -256,7 +256,7 @@ void ota_task(void *arg) {
         (s_source == Source::kFile) ? do_ota_file(s_path) : do_ota(s_url);
     if (err == ESP_OK) {
       report("reboot");
-      vTaskDelay(pdMS_TO_TICKS(500)); // laisser partir le message MQTT
+      vTaskDelay(pdMS_TO_TICKS(500)); // laisser partir le statut vers HA
       sd_log::flush_now();
       esp_restart();
     }

@@ -27,7 +27,8 @@ struct EventList {
   int64_t fetched_at_us = 0;
 };
 
-/* Parse un tableau JSON GET /api/calendars/<entity> : chaque élément a
+/* Parse {"response": [...]} (calendar.get_events reshaped by gcal.cpp's
+ * template, cf. gcal_parse.cpp) : chaque élément a
  * "summary" (optionnel), "start"/"end" avec soit "dateTime" (RFC3339,
  * horaire) soit "date" (YYYY-MM-DD, journée entière -> all_day=true).
  * Trie le résultat par start_epoch_s croissant (l'ordre HA n'est pas
@@ -93,8 +94,8 @@ int events_on_day(const EventList &l, int64_t day_start_s, int64_t day_end_s,
 [[nodiscard]] bool cache_covers(int64_t start_s, int64_t end_s,
                                 int64_t max_age_us);
 
-/* GET /api/calendars/<cfg::kHaCalendarEntity>?start=..&end=.. (Bearer HA,
- * bornes formatées en UTC). Lance un fetch HTTP + parse dans une tâche
+/* calendar.get_events on cfg::kHaCalendarEntity through the ESPHome API (no
+ * token), bounds formatted in UTC. Lance l'appel + parse dans une tâche
  * FreeRTOS courte auto-détruite ; done_cb(ok) est appelé depuis cette tâche
  * (LvglLock requis avant tout lv_* dans le callback). Ignoré si un fetch est
  * déjà en cours. */

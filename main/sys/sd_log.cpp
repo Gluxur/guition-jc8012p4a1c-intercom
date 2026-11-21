@@ -538,7 +538,7 @@ void init_ring() {
   s_ring = static_cast<char *>(heap_caps_malloc(
       static_cast<size_t>(cfg::sd::kRingBytes), MALLOC_CAP_SPIRAM));
   if (!s_ring) {
-    return; // journal SD désactivé ; UART, page Debug et MQTT intacts
+    return; // journal SD désactivé ; UART, page Debug et logs de l'API intacts
   }
   if (!dbg_log::add_line_sink(line_sink)) {
     heap_caps_free(s_ring);

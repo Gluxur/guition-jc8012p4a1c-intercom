@@ -138,7 +138,7 @@ bool connect_blocking(const char *ssid, const char *pass) {
   }
 
   // 60 s et non portMAX_DELAY : au-delà, on rend la main pour que app_main
-  // démarre quand même MQTT, OTA et net_wdt. Le driver continue à retenter
+  // démarre quand même l'API, OTA et net_wdt. Le driver continue à retenter
   // (handler STA_DISCONNECTED) : si le lien monte plus tard, tout se raccroche
   // tout seul. Auparavant un SSID erroné figeait le boot ici définitivement.
   const EventBits_t bits =

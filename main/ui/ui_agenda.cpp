@@ -439,7 +439,7 @@ void cb_back(lv_event_t *) {
 void refresh_timer_cb(lv_timer_t *) { request_fetch(); }
 
 // Pause sur SCREEN_UNLOADED et pas seulement au bouton Retour : une sonnerie
-// MQTT ouvre la caméra depuis n'importe quel écran, et les timers de cette
+// La sonnette ouvre la caméra depuis n'importe quel écran, et les timers de cette
 // page continuaient alors de tourner pendant l'appel — jusqu'à lancer un fetch
 // HTTP vers HA en pleine session vidéo.
 void cb_unloaded(lv_event_t *) {

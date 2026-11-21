@@ -8,7 +8,7 @@
 //     effective vient de la NVS via `settings::` (page Configuration de
 //     l'écran tactile). Ne jamais lire ces constantes ailleurs que dans
 //     settings.cpp.
-//   - le reste : ports, chemins d'API, topics MQTT, entité HA. Propriétés du
+//   - le reste : ports, chemins d'API, entités HA. Propriétés du
 //     déploiement go2rtc/Home Assistant, identiques sur toutes les cartes, non
 //     éditables à l'écran. Lisibles partout.
 //
@@ -30,15 +30,6 @@
 #ifndef APP_SECRET_HOST
 #define APP_SECRET_HOST ""
 #endif
-#ifndef APP_SECRET_MQTT_USER
-#define APP_SECRET_MQTT_USER ""
-#endif
-#ifndef APP_SECRET_MQTT_PASS
-#define APP_SECRET_MQTT_PASS ""
-#endif
-#ifndef APP_SECRET_HA_TOKEN
-#define APP_SECRET_HA_TOKEN ""
-#endif
 
 namespace cfg {
 
@@ -53,22 +44,16 @@ namespace defaults {
 inline constexpr const char *kWifiSsid = APP_SECRET_WIFI_SSID;
 inline constexpr const char *kWifiPass = APP_SECRET_WIFI_PASS;
 
-// go2rtc, Home Assistant et le broker MQTT tournent sur la même machine : un
-// seul hôte à saisir sur la page Configuration.
+// go2rtc et Home Assistant tournent sur la même machine : un seul hôte à
+// saisir sur la page Configuration. Home Assistant lui-même n'a pas besoin
+// d'être configuré ici : il découvre l'appareil (ESPHome API, mDNS).
 inline constexpr const char *kHost = APP_SECRET_HOST;
-
-inline constexpr const char *kMqttUser = APP_SECRET_MQTT_USER;
-inline constexpr const char *kMqttPass = APP_SECRET_MQTT_PASS;
-
-// Jeton longue durée Home Assistant (API REST météo / agenda).
-inline constexpr const char *kHaToken = APP_SECRET_HA_TOKEN;
 
 } // namespace defaults
 
 // --- Ports des services (mêmes valeurs sur toutes les installations) --------
 inline constexpr int kGo2rtcPort = 1984;
 inline constexpr int kHaPort = 8123;
-inline constexpr int kMqttPort = 1883;
 
 // --- Flux go2rtc -----------------------------------------------------------
 // WebRTC ne sert plus qu'à l'audio : flux audio-only pour que go2rtc n'envoie
@@ -101,31 +86,8 @@ inline constexpr const char *kOtaFirmwarePath = "/local/fw.bin";
 inline constexpr const char *kTimezone = "CET-1CEST,M3.5.0,M10.5.0/3";
 inline constexpr const char *kSntpServer = "pool.ntp.org";
 
-// --- Topics MQTT -----------------------------------------------------------
-namespace topic {
-// Déclenche l'ouverture de l'écran caméra quand ce topic reçoit exactement
-// cette charge utile.
-inline constexpr const char *kRing = "visiophone/ring";
-inline constexpr const char *kRingPayload = "ON";
-
-inline constexpr const char *kOtaCmd = "visio/ota/cmd";       // payload = URL
-inline constexpr const char *kOtaStatus = "visio/ota/status"; // progression
-inline constexpr const char *kLog = "visio/log";              // logs (batch)
-inline constexpr const char *kLogEnable = "visio/log/enable"; // "1" / "0"
-inline constexpr const char *kFwVersion = "visio/fw/version"; // retained
-
-// Testament MQTT : « offline » publié par le BROKER si l'appareil tombe sans
-// déconnexion propre. Toutes les entités le déclarent en `avty_t` — sans lui,
-// une carte Home Assistant affiche indéfiniment la dernière valeur connue d'un
-// appareil débranché depuis trois jours.
-inline constexpr const char *kStatus = "visio/status";
-inline constexpr const char *kStatusOnline = "online";
-inline constexpr const char *kStatusOffline = "offline";
-
-// Mise à jour depuis la carte microSD (payload = chemin du .bin).
-inline constexpr const char *kOtaSdCmd = "visio/ota/sd";
+// Image lue par le bouton « Mettre à jour depuis la carte SD ».
 inline constexpr const char *kOtaSdDefaultPath = "/sdcard/fw.bin";
-} // namespace topic
 
 // --- Journal sur carte microSD ---------------------------------------------
 namespace sd {

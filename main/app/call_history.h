@@ -9,7 +9,7 @@
 // l'appel manqué sur la carte SD et tient le compteur d'appels non répondus que
 // la page météo affiche.
 //
-// Ce que « appel » veut dire ici : un déclenchement MQTT, et rien d'autre. Un
+// Ce que « appel » veut dire ici : un coup de sonnette (bouton « Sonner » de HA), et rien d'autre. Un
 // accès manuel à la caméra depuis l'écran d'accueil passe par
 // ui_camera_v2::open_screen_from_event() sans jamais toucher ce module — il
 // n'est donc jamais tracé, ni compté comme manqué.

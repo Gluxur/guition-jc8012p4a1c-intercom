@@ -25,7 +25,7 @@ portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 vprintf_like_t s_prev_vprintf = nullptr;
 bool s_inited = false;
 
-constexpr size_t kMaxSinks = 2; // log_stream (MQTT) + sd_log (fichier)
+constexpr size_t kMaxSinks = 2; // esphome_api (logs live) + sd_log (fichier)
 LineSink s_sinks[kMaxSinks] = {nullptr, nullptr};
 
 // Hook installé via esp_log_set_vprintf. Peut être appelé depuis n'importe
@@ -63,7 +63,7 @@ int hook_vprintf(const char *fmt, va_list ap) {
     }
     portEXIT_CRITICAL(&s_mux);
 
-    // Tee vers les sinks secondaires (log_stream, sd_log). Hors section
+    // Tee vers les sinks secondaires (esphome_api, sd_log). Hors section
     // critique : eux-mêmes prennent leurs propres verrous.
     for (size_t i = 0; i < kMaxSinks; i++) {
       if (s_sinks[i]) {

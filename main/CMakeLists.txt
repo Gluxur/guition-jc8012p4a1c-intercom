@@ -10,8 +10,6 @@ idf_component_register(
          "app/camera_session.cpp"
          "app/ephemeris.cpp"
          "app/ha_api.cpp"
-         "app/ha_discovery_fmt.cpp"
-         "app/ha_entities.cpp"
          "app/mic_session.cpp"
          "app/motion_detect.cpp"
          "app/presence.cpp"
@@ -49,8 +47,6 @@ idf_component_register(
          "media/ringtone_sd.cpp"
          "media/wav_parse.cpp"
          "sys/dbg_log.cpp"
-         "sys/log_stream.cpp"
-         "sys/mqtt_ctrl.cpp"
          "sys/net_wdt.cpp"
          "sys/ota_ctrl.cpp"
          "sys/ota_image_check.cpp"
@@ -89,6 +85,6 @@ idf_component_register(
     # vers le registre. Il s'enregistre sous son nom de dossier, d'où le préfixe.
     REQUIRES log espressif__cjson esp_wifi esp_event esp_netif nvs_flash esp_http_client
              esp_http_server
-             espressif__esp_peer bsp esp_mm esp_driver_jpeg mqtt app_update
+             espressif__esp_peer bsp esp_mm esp_driver_jpeg mbedtls app_update
              esp_https_ota esp_app_format fatfs espressif__esp_tinyusb
              espressif__esp-sr espressif__mdns)

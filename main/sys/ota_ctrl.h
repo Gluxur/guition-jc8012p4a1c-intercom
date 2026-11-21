@@ -7,12 +7,12 @@ namespace ota_ctrl {
 
 // is_busy : renvoie true si une session vidéo/micro est active -> OTA refusé
 //           (SRAM interne + bande passante SDIO partagée).
-// report  : sink de statut ; main le câble sur mqtt publish cfg::topic::kOtaStatus.
+// report  : sink de statut ; main le câble sur l'entité « Statut OTA ».
 // Crée une tâche dédiée qui attend une requête. À appeler une fois au boot.
 void init(bool (*is_busy)(), void (*report)(const char *msg));
 
 // Demande un OTA depuis `url`. Non bloquant : copie l'url + réveille la tâche.
-// Sûr depuis le contexte du handler mqtt. Ignore si un OTA est déjà en cours.
+// Sûr depuis la tâche de l'API. Ignore si un OTA est déjà en cours.
 void request(const char *url);
 
 // Demande un OTA depuis un fichier de la carte microSD. Même contrat que

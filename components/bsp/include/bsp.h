@@ -87,7 +87,7 @@ public:
   void backlight_off();
 
   /** Apply a brightness WITHOUT persisting it and without overwriting the
-   * remembered value. For transient states only: MQTT screen-off, full
+   * remembered value. For transient states only: HA screen-off, full
    * brightness while a call is on screen. Going through set_backlight() would
    * write NVS twice per call (flash wear) and, if power were lost mid-call,
    * would leave the user's own setting overwritten for good. */
@@ -602,7 +602,7 @@ private:
   uint8_t backlight_pct_ = 100;
   /* Panel actually lit. Distinct from backlight_pct_, which is the REMEMBERED
    * setting and survives blanking on purpose. Atomic: written from the LVGL
-   * task (touch wake), the esp-mqtt task (HA light entity) and cam_defer /
+   * task (touch wake), the ESPHome API task (HA light entity) and cam_defer /
    * cam_stop (full brightness during a call). */
   std::atomic<bool> display_on_{true};
 

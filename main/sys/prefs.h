@@ -23,7 +23,7 @@ inline constexpr size_t kRingFileMax = 64;
 void init();
 
 // Ne pas déranger : la sonnerie est muette, l'écran caméra s'ouvre quand même.
-// Lu depuis la tâche esp-mqtt, écrit depuis la tâche LVGL.
+// Lu depuis la tâche de l'API, écrit depuis la tâche LVGL.
 [[nodiscard]] bool dnd();
 
 // Applique et persiste. Un échec d'écriture NVS ne bloque pas l'application
@@ -72,7 +72,7 @@ void set_sd_log_enabled(bool on);
 // Serveur de fichiers Wi-Fi. Défaut : éteint. Toute IO sur la carte ajoute de
 // la gigue au drain TCP du flux MJPEG ; un serveur permanent serait une porte
 // ouverte en permanence sur ce chemin. Lu au boot par app_main, écrit depuis la
-// tâche LVGL et depuis la tâche esp-mqtt (entité Home Assistant).
+// tâche LVGL et depuis la tâche de l'API (entité Home Assistant).
 [[nodiscard]] bool file_server();
 
 // Persiste SEULEMENT. Comme set_sd_log_enabled, ce setter n'agit pas sur le

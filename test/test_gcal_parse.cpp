@@ -14,9 +14,12 @@ namespace {
 constexpr int64_t kJul30Midnight = 1'785'369'600;
 constexpr int64_t kJul31Midnight = kJul30Midnight + 86400;
 
+// The parser reads the event list under "response" (calendar.get_events
+// reshaped by gcal.cpp's template): tests write the list, this adds the key.
 gcal::EventList parse(const std::string &json, bool expect_ok = true) {
   gcal::EventList l;
-  const bool ok = gcal::parse_events_json(json.c_str(), l);
+  const std::string doc = "{\"response\":" + json + "}";
+  const bool ok = gcal::parse_events_json(doc.c_str(), l);
   EXPECT_EQ(expect_ok, ok);
   return l;
 }

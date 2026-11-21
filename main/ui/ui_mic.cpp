@@ -85,7 +85,7 @@ void cb_tone(lv_event_t *e) {
 }
 
 // Pause sur SCREEN_UNLOADED et pas seulement au bouton Retour : une sonnerie
-// MQTT ouvre la caméra depuis n'importe quel écran, et les timers de cette
+// La sonnette ouvre la caméra depuis n'importe quel écran, et les timers de cette
 // page continuaient alors de tourner pendant l'appel.
 void cb_unloaded(lv_event_t *) {
   if (s_timer) {
@@ -276,7 +276,7 @@ void create_screen(const ui::Callbacks &cbs) {
 
   // --- Bouton d'écoute locale de la sonnerie (à droite de la tonalité) ---
   // Hors du tabview comme les deux autres : atteignable depuis les deux
-  // onglets. Teste la chaîne audio locale sans MQTT ni session caméra.
+  // onglets. Teste la chaîne audio locale sans Home Assistant ni session caméra.
   s_ring_btn = lv_button_create(s_scr);
   lv_obj_set_size(s_ring_btn, 300, 80);
   lv_obj_align(s_ring_btn, LV_ALIGN_BOTTOM_LEFT, 568, -24);

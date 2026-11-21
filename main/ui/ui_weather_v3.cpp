@@ -12,7 +12,7 @@
 #include "net/gcal.h"
 #include "net/weather.h"
 #include "net/wifi_net.h"
-#include "sys/mqtt_ctrl.h"
+#include "net/esphome_api.h"
 #include "theme.h"
 #include <cmath>
 #include <cstdio>
@@ -141,7 +141,7 @@ static lv_timer_t *s_refresh_timer = nullptr;
 static lv_timer_t *s_icon_stagger_timer = nullptr;
 static lv_timer_t *s_clock_timer = nullptr;
 static lv_obj_t *s_net_wifi = nullptr;
-static lv_obj_t *s_net_mqtt = nullptr;
+static lv_obj_t *s_net_ha = nullptr;
 static lv_timer_t *s_net_timer = nullptr;
 static bool s_screen_active = false;
 // Animations Lottie en cours (et non en pause). Distinct de s_screen_active :
@@ -522,27 +522,35 @@ static void on_gcal_fetch_done(bool ok) {
   update_events_locked();
 }
 
+static void refresh_timer_cb(lv_timer_t *);
+
 // Mutex LVGL requis (appelée depuis la tâche LVGL uniquement).
 static void update_net_locked() {
-  if (!s_net_wifi || !s_net_mqtt)
+  if (!s_net_wifi || !s_net_ha)
     return;
   // Réécrit seulement sur changement : un style local reposé à l'identique
   // invalide quand même la zone (lv_obj_set_local_style_prop ne compare pas),
   // soit un rendu + une rotation PPA toutes les 2 s pour rien. -1 = jamais
   // peint (premier appel, ou retour sur l'écran).
   static int s_wifi_shown = -1;
-  static int s_mqtt_shown = -1;
+  static int s_ha_shown = -1;
   const int wifi = wifi_net::link_up() ? 1 : 0;
-  const int mqtt = mqtt_ctrl::connected() ? 1 : 0;
+  const int ha = esphome_api::connected() ? 1 : 0;
   if (wifi != s_wifi_shown) {
     s_wifi_shown = wifi;
     lv_obj_set_style_text_color(s_net_wifi,
                                 lv_color_hex(wifi ? kNetOk : kNetKo), 0);
   }
-  if (mqtt != s_mqtt_shown) {
-    s_mqtt_shown = mqtt;
-    lv_obj_set_style_text_color(s_net_mqtt,
-                                lv_color_hex(mqtt ? kNetOk : kNetKo), 0);
+  if (ha != s_ha_shown) {
+    // Home Assistant (re)connected: forecast and agenda come through it. A
+    // board that booted before HA answered would otherwise show "--" until
+    // the 30-min refresh.
+    if (ha && s_ha_shown == 0) {
+      refresh_timer_cb(nullptr);
+    }
+    s_ha_shown = ha;
+    lv_obj_set_style_text_color(s_net_ha,
+                                lv_color_hex(ha ? kNetOk : kNetKo), 0);
   }
 }
 
@@ -1015,9 +1023,9 @@ void create_screen() {
   lv_label_set_text(s_net_wifi, LV_SYMBOL_WIFI);
   lv_obj_set_style_text_font(s_net_wifi, &lv_font_montserrat_24, 0);
 
-  s_net_mqtt = lv_label_create(hright);
-  lv_label_set_text(s_net_mqtt, LV_SYMBOL_CHARGE);
-  lv_obj_set_style_text_font(s_net_mqtt, &lv_font_montserrat_24, 0);
+  s_net_ha = lv_label_create(hright);
+  lv_label_set_text(s_net_ha, LV_SYMBOL_CHARGE);
+  lv_obj_set_style_text_font(s_net_ha, &lv_font_montserrat_24, 0);
 
   update_net_locked();
 

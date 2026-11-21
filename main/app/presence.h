@@ -14,7 +14,7 @@ namespace presence {
 
 struct Hooks {
   // Appelé depuis la tâche presence à chaque changement d'état. Injecté par
-  // main.cpp vers ha_entities, pour garder presence -> ha_entities acyclique.
+  // main.cpp vers ha_api, pour garder presence -> ha_api acyclique.
   void (*on_change)();
 };
 

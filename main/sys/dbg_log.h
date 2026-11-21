@@ -17,8 +17,8 @@ size_t drain(char *dst, size_t cap);
 
 // Sink secondaire optionnel : appelé depuis le hook vprintf pour chaque ligne
 // formatée (déjà bornée en longueur). DOIT être léger + non bloquant (s'exécute
-// dans le contexte de l'appelant du log). Utilisé par log_stream pour tee-er
-// les lignes vers MQTT, et par sd_log pour les pousser dans son ring — sans
+// dans le contexte de l'appelant du log). Utilisé par esphome_api pour tee-er
+// les lignes vers les clients de l'API, et par sd_log pour les pousser dans son ring — sans
 // consommer le ring Debug (drain() est destructif, il appartient à l'UI).
 using LineSink = void (*)(const char *line, size_t len);
 

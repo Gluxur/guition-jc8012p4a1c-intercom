@@ -79,7 +79,6 @@ add_executable(tests
   test_ringtone.cpp
   test_wav_parse.cpp
   test_gcal_parse.cpp
-  test_ha_discovery_fmt.cpp
   test_motion_detect.cpp
   test_premul_blend.cpp
   test_ota_image_check.cpp
@@ -94,7 +93,6 @@ add_executable(tests
   # net/<x>_parse.cpp le décodage pur — seul ce dernier est compilé ici.
   "${APP_DIR}/app/call_log_parse.cpp"
   "${APP_DIR}/app/ephemeris.cpp"
-  "${APP_DIR}/app/ha_discovery_fmt.cpp"
   "${APP_DIR}/app/motion_detect.cpp"
   "${APP_DIR}/media/g711.cpp"
   "${APP_DIR}/media/ringtone.cpp"

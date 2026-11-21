@@ -2,14 +2,13 @@
 
 #include "app_config.h"
 #include "esp_heap_caps.h"
-#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sys/mutex.h"
-#include "sys/settings.h"
+#include "net/esphome_api.h"
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -40,101 +39,52 @@ static void (*s_done_cb)(bool) = nullptr;
 static int64_t s_pending_start_s = 0;
 static int64_t s_pending_end_s = 0;
 
-struct RespBuf {
-  char *data;
-  int len;
-  int cap;
-  bool overflow; // réponse plus grosse que le buffer : JSON forcément invalide
-};
-
-static esp_err_t http_event(esp_http_client_event_t *evt) {
-  auto *rb = static_cast<RespBuf *>(evt->user_data);
-  switch (evt->event_id) {
-  case HTTP_EVENT_ON_DATA:
-    if (rb->len + evt->data_len < rb->cap - 1) {
-      memcpy(rb->data + rb->len, evt->data, evt->data_len);
-      rb->len += evt->data_len;
-    } else {
-      rb->overflow = true;
-    }
-    break;
-  case HTTP_EVENT_ON_FINISH:
-    rb->data[rb->len] = '\0';
-    break;
-  default:
-    break;
-  }
-  return ESP_OK;
-}
-
-// GET simple (l'API calendrier HA ne prend pas de corps). Dupliqué de
-// weather::ha_request faute d'utilitaire HTTP HA partagé dans le projet.
-static char *ha_get(const char *url, const char *what) {
-  RespBuf rb = {};
-  rb.cap = kRespBufSize;
-  rb.data =
-      static_cast<char *>(heap_caps_malloc(kRespBufSize, MALLOC_CAP_SPIRAM));
-  if (!rb.data) {
-    ESP_LOGE(TAG, "%s: alloc buffer réponse échouée", what);
-    return nullptr;
-  }
-  esp_http_client_config_t cfg = {};
-  cfg.url = url;
-  cfg.event_handler = http_event;
-  cfg.user_data = &rb;
-  cfg.timeout_ms = 10000;
-  esp_http_client_handle_t client = esp_http_client_init(&cfg);
-  if (!client) {
-    ESP_LOGE(TAG, "%s: esp_http_client_init échoué", what);
-    heap_caps_free(rb.data);
-    return nullptr;
-  }
-  char auth[settings::kTokenMax + 8];
-  snprintf(auth, sizeof auth, "Bearer %s", settings::get().ha_token);
-  esp_http_client_set_header(client, "Authorization", auth);
-  esp_http_client_set_method(client, HTTP_METHOD_GET);
-
-  bool ok = false;
-  esp_err_t err = esp_http_client_perform(client);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "%s: HTTP %s", what, esp_err_to_name(err));
-  } else {
-    const int status = esp_http_client_get_status_code(client);
-    if (status != 200) {
-      ESP_LOGE(TAG, "%s: HTTP status %d (token/entité ?)", what, status);
-    } else if (rb.overflow) {
-      ESP_LOGE(TAG, "%s: réponse > %d o, tronquée (%d o reçus)", what, rb.cap,
-               rb.len);
-    } else {
-      ok = true;
-    }
-  }
-  esp_http_client_cleanup(client);
-  if (!ok) {
-    heap_caps_free(rb.data);
-    return nullptr;
-  }
-  return rb.data;
-}
-
 static void format_utc(int64_t epoch_s, char *dst, size_t cap) {
   time_t t = static_cast<time_t>(epoch_s);
   struct tm g;
   gmtime_r(&t, &g);
-  strftime(dst, cap, "%Y-%m-%dT%H:%M:%SZ", &g);
+  strftime(dst, cap, "%Y-%m-%dT%H:%M:%S+00:00", &g);
+}
+
+// calendar.get_events answers {"<entity>": {"events": [{"start": "...",
+// "end": "...", "summary": ...}]}} with bare strings: "2026-07-30T10:00:00+02:00"
+// for a timed event, "2026-07-30" for an all-day one. The template turns that
+// into the layout gcal_parse already decodes (REST API: {"dateTime"|"date"}),
+// and drops description/location, which the screen never shows.
+static void build_template(char *out, size_t cap) {
+  snprintf(out, cap,
+           "{%% set ns = namespace(l=[]) %%}"
+           "{%% for ev in response['%s'].events %%}"
+           "{%% set k = 'dateTime' if 'T' in ev['start'] else 'date' %%}"
+           "{%% set ns.l = ns.l + [{'summary': ev.get('summary', ''),"
+           " 'start': {k: ev['start']}, 'end': {k: ev['end']}}] %%}"
+           "{%% endfor %%}{{ ns.l }}",
+           cfg::kHaCalendarEntity);
 }
 
 static bool do_fetch(int64_t range_start_s, int64_t range_end_s) {
-  char start_str[24], end_str[24];
+  char start_str[32], end_str[32];
   format_utc(range_start_s, start_str, sizeof start_str);
   format_utc(range_end_s, end_str, sizeof end_str);
-  char url[224];
-  snprintf(url, sizeof url, "%s/api/calendars/%s?start=%s&end=%s",
-           settings::ha_base_url(), cfg::kHaCalendarEntity, start_str,
-           end_str);
-  char *resp = ha_get(url, "agenda");
-  if (resp == nullptr)
+  char *resp =
+      static_cast<char *>(heap_caps_malloc(kRespBufSize, MALLOC_CAP_SPIRAM));
+  if (resp == nullptr) {
+    ESP_LOGE(TAG, "alloc buffer réponse échouée");
     return false;
+  }
+  char tmpl[512];
+  build_template(tmpl, sizeof tmpl);
+  const esphome_api::Kv data[] = {
+      {"entity_id", cfg::kHaCalendarEntity},
+      {"start_date_time", start_str},
+      {"end_date_time", end_str},
+  };
+  size_t len = 0;
+  if (!esphome_api::call_action_sync("calendar.get_events", data, 3, tmpl,
+                                     resp, kRespBufSize, &len)) {
+    heap_caps_free(resp);
+    return false;
+  }
   bool ok = false;
   EventList fresh;
   if (parse_events_json(resp, fresh)) {

@@ -15,7 +15,7 @@
 #include "lvgl.h"
 #include "sys/prefs.h"
 #include "net/wifi_net.h"
-#include "sys/mqtt_ctrl.h"
+#include "net/esphome_api.h"
 #include "theme.h"
 #include <atomic>
 #include <cstdint>
@@ -37,7 +37,7 @@ static const uint32_t &kNetOk = ui::theme::active.ok;    // lien établi (vert)
 static const uint32_t &kNetKo = ui::theme::active.ko;    // lien absent (rouge)
 static constexpr uint32_t kNetPeriodMs = 2 * 1000;
 static lv_obj_t *s_net_wifi = NULL;
-static lv_obj_t *s_net_mqtt = NULL;
+static lv_obj_t *s_net_ha = NULL;
 static lv_timer_t *s_net_timer = NULL;
 // Lu par la tâche de rendu vidéo (autre cœur) à chaque frame pour suspendre
 // l'écriture directe dans le framebuffer : atomic, pas volatile — `volatile` en
@@ -92,25 +92,25 @@ static void cb_power_off(lv_event_t *e) {
 
 // Mutex LVGL requis (appelée depuis la tâche LVGL uniquement).
 static void update_net_locked() {
-  if (!s_net_wifi || !s_net_mqtt)
+  if (!s_net_wifi || !s_net_ha)
     return;
   // Réécrit seulement sur changement : un style local reposé à l'identique
   // invalide quand même la zone (lv_obj_set_local_style_prop ne compare pas),
   // soit un rendu + une rotation PPA toutes les 2 s pour rien. -1 = jamais
   // peint (premier appel, ou retour sur l'écran).
   static int s_wifi_shown = -1;
-  static int s_mqtt_shown = -1;
+  static int s_ha_shown = -1;
   const int wifi = wifi_net::link_up() ? 1 : 0;
-  const int mqtt = mqtt_ctrl::connected() ? 1 : 0;
+  const int ha = esphome_api::connected() ? 1 : 0;
   if (wifi != s_wifi_shown) {
     s_wifi_shown = wifi;
     lv_obj_set_style_text_color(s_net_wifi,
                                 lv_color_hex(wifi ? kNetOk : kNetKo), 0);
   }
-  if (mqtt != s_mqtt_shown) {
-    s_mqtt_shown = mqtt;
-    lv_obj_set_style_text_color(s_net_mqtt,
-                                lv_color_hex(mqtt ? kNetOk : kNetKo), 0);
+  if (ha != s_ha_shown) {
+    s_ha_shown = ha;
+    lv_obj_set_style_text_color(s_net_ha,
+                                lv_color_hex(ha ? kNetOk : kNetKo), 0);
   }
 }
 
@@ -203,7 +203,7 @@ void create_screens(const Callbacks &cbs) {
   lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
 
-  /* Wi-Fi / MQTT en haut à droite, même sémantique que la page Météo. Conteneur
+  /* Wi-Fi / Home Assistant en haut à droite, même sémantique que la page Météo. Conteneur
    * transparent : dans un flex, l'ordre de création est l'ordre d'affichage. */
   lv_obj_t *net_box = lv_obj_create(s_home_scr);
   lv_obj_remove_flag(net_box, LV_OBJ_FLAG_SCROLLABLE);
@@ -221,9 +221,9 @@ void create_screens(const Callbacks &cbs) {
   lv_label_set_text(s_net_wifi, LV_SYMBOL_WIFI);
   lv_obj_set_style_text_font(s_net_wifi, &lv_font_montserrat_24, 0);
 
-  s_net_mqtt = lv_label_create(net_box);
-  lv_label_set_text(s_net_mqtt, LV_SYMBOL_CHARGE);
-  lv_obj_set_style_text_font(s_net_mqtt, &lv_font_montserrat_24, 0);
+  s_net_ha = lv_label_create(net_box);
+  lv_label_set_text(s_net_ha, LV_SYMBOL_CHARGE);
+  lv_obj_set_style_text_font(s_net_ha, &lv_font_montserrat_24, 0);
 
   update_net_locked();
   lv_obj_add_event_cb(s_home_scr, cb_home_screen_event, LV_EVENT_SCREEN_LOADED,
@@ -312,7 +312,7 @@ void load_home_screen() {
 namespace {
 // Exécuté par lv_timer_handler, donc dans lvgl_task : mutex tenu, et SA pile
 // (en PSRAM, dimensionnée pour ThorVG). Ouvrir l'agenda directement depuis la
-// tâche esp-mqtt faisait déborder la pile de celle-ci en construisant la grille
+// tâche de l'API faisait déborder la pile de celle-ci en construisant la grille
 // de la semaine -> reset=PANIC (vécu 2026-11-15, BOOT #274).
 void open_page_async(void *arg) {
   switch (reinterpret_cast<intptr_t>(arg)) {
@@ -351,7 +351,7 @@ bool open_page(const char *name) {
   }
   // Seul lv_async_call est fait ici, sous mutex (la liste des appels
   // différés de LVGL n'est pas protégée) : l'ouverture elle-même se fera au
-  // prochain tour de lvgl_task. Délai borné : ne pas bloquer esp-mqtt derrière
+  // prochain tour de lvgl_task. Délai borné : ne pas bloquer la tâche de l'API derrière
   // un repaint.
   bsp::Bsp::LvglLock lock(500);
   if (!lock.held()) {

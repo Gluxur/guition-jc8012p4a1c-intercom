@@ -19,7 +19,7 @@ void start_hd();
 // Coup de sonnette : fait sonner la platine de rue (mic_session::start_ringback)
 // dès que le peer audio de cette session est connecté — tout de suite s'il l'est
 // déjà. Appelable avant start_hd() : la demande attend la connexion, et seul
-// stop() l'annule. Non bloquant, sûr depuis la tâche MQTT.
+// stop() l'annule. Non bloquant, sûr depuis la tâche de l'API.
 void request_ringback();
 
 // Arrêt complet (vidéo, peer, purge audio) et retour à l'écran d'accueil.

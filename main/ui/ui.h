@@ -32,7 +32,7 @@ struct Callbacks {
 
   // Sonnerie jouée sur le haut-parleur de l'écran (page Micro/Debug). Teste
   // toute la chaîne locale — fichier chargé, gain, volume, play_pcm, codec —
-  // sans passer par MQTT ni ouvrir de session caméra.
+  // sans passer par Home Assistant ni ouvrir de session caméra.
   void (*toggle_ringtone)();
   bool (*ringtone_active)();
 };

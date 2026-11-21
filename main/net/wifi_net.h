@@ -8,7 +8,7 @@ namespace wifi_net {
  *
  * Attente BORNÉE à 60 s : au-delà, renvoie false et rend la main. Le driver
  * continue ses tentatives en arrière-plan (handler STA_DISCONNECTED), donc
- * l'appelant DOIT poursuivre son initialisation — MQTT, OTA et net_wdt sont
+ * l'appelant DOIT poursuivre son initialisation — l'API, OTA et net_wdt sont
  * les seules voies de récupération à distance, et à portMAX_DELAY un SSID
  * erroné saisi sur la page Configuration les empêchait toutes de démarrer. */
 bool connect_blocking(const char *ssid, const char *pass);

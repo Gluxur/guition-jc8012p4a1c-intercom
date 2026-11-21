@@ -14,7 +14,6 @@
 #include "app/call_history.h"
 #include "app/camera_session.h"
 #include "app/ha_api.h"
-#include "app/ha_entities.h"
 #include "app/mic_session.h"
 #include "app/presence.h"
 #include "app/video_mjpeg.h"
@@ -22,12 +21,11 @@
 #include "media/ringtone.h"
 #include "media/ringtone_sd.h"
 #include "net/file_server.h"
+#include "net/esphome_api.h"
 #include "net/gcal.h"
 #include "net/weather.h"
 #include "net/wifi_net.h"
 #include "sys/dbg_log.h"
-#include "sys/log_stream.h"
-#include "sys/mqtt_ctrl.h"
 #include "sys/net_wdt.h"
 #include "sys/ota_ctrl.h"
 #include "sys/prefs.h"
@@ -116,7 +114,7 @@ static void lvgl_task(void *arg) {
     ui_cbs.mic_tone_active = ringtone::mic_tone_active;
     // Écoute locale de la sonnerie. audio_pipeline::wake() est indispensable :
     // hors streaming aud_render dort sur portMAX_DELAY et ne verrait jamais
-    // l'armement — même raison que dans mqtt_trigger_cb.
+    // l'armement — même raison que dans ring_cb.
     ui_cbs.toggle_ringtone = [] {
       if (ringtone::is_ringing()) {
         ringtone::stop();
@@ -151,18 +149,18 @@ static void lvgl_task(void *arg) {
   }
 }
 
-// Appelé depuis la tâche esp-mqtt quand le message déclencheur arrive.
-// Garde camera_session::active() : ignore si la caméra est déjà active (pas de
-// double démarrage WebRTC / rechargement d'écran). open_screen prend le
-// LvglLock en interne et diffère le WebRTC dans sa propre tâche -> sûr depuis
-// ce contexte hors LVGL.
-static void mqtt_trigger_cb(void) {
+// Doorbell: called from the ESPHome API task when Home Assistant presses the
+// "Sonner" button (its doorbell automation). Garde camera_session::active() :
+// ignore si la caméra est déjà active (pas de double démarrage WebRTC /
+// rechargement d'écran). open_screen prend le LvglLock en interne et diffère
+// le WebRTC dans sa propre tâche -> sûr depuis ce contexte hors LVGL.
+static void ring_cb(void) {
   if (ota_ctrl::in_progress()) {
     // Écriture de partition en cours (~30 s) : ouvrir WebRTC + MJPEG en même
     // temps cumulerait le DTLS, le drain vidéo et l'écriture flash. Les gardes
     // OTA refusent déjà le cas inverse (pas d'OTA pendant un appel). La
     // sonnerie intérieure prévient quand même qu'on a sonné.
-    ESP_LOGW(TAG, "trigger MQTT pendant une OTA : sonnerie seule");
+    ESP_LOGW(TAG, "sonnette pendant une OTA : sonnerie seule");
     if (!prefs::dnd()) {
       ringtone::start();
       audio_pipeline::wake();
@@ -172,7 +170,7 @@ static void mqtt_trigger_cb(void) {
   if (usb_msc::status() == usb_msc::Status::kActive) {
     // La carte appartient au PC : ouvrir l'écran caméra remplacerait l'écran
     // du mode par de la vidéo, et le journal SD est de toute façon suspendu.
-    ESP_LOGI(TAG, "trigger MQTT ignore : mode cle USB actif");
+    ESP_LOGI(TAG, "sonnette ignorée : mode clé USB actif");
     return;
   }
   if (camera_session::active()) {
@@ -182,10 +180,10 @@ static void mqtt_trigger_cb(void) {
     // live() et non active() : le backchannel est ouvert (coupé) dès la
     // sonnerie côté rue, seul un vrai décroché doit faire ignorer le trigger.
     if (mic_session::live()) {
-      ESP_LOGI(TAG, "trigger MQTT ignoré : micro déjà actif");
+      ESP_LOGI(TAG, "sonnette ignorée : micro déjà actif");
       return;
     }
-    ESP_LOGI(TAG, "trigger MQTT : stream actif, micro coupé -> re-sonnerie");
+    ESP_LOGI(TAG, "sonnette : stream actif, micro coupé -> re-sonnerie");
     // Nouveau coup de sonnette = nouvel appel à tracer, et compte à rebours de
     // non-réponse réarmé. Indépendant du « ne pas déranger », qui ne coupe que
     // le son, pas le suivi.
@@ -197,7 +195,7 @@ static void mqtt_trigger_cb(void) {
     camera_session::request_ringback();
     return;
   }
-  ESP_LOGI(TAG, "trigger MQTT -> ouverture écran caméra");
+  ESP_LOGI(TAG, "sonnette -> ouverture écran caméra");
   call_history::on_call_start();
   ui_camera_v2::open_screen();
   // Sonnerie côté rue, hors « ne pas déranger » : celui-ci ne fait taire que
@@ -243,9 +241,11 @@ static bool net_wdt_freeze_cb(void) {
          settings::get().wifi_ssid[0] == '\0' || settings::get().host[0] == '\0';
 }
 
-// Sink de statut OTA -> MQTT (QoS 1 : le statut doit arriver).
+// OTA progress -> the "Statut OTA" entity. The text itself is read back by
+// the entity's getter (ota_ctrl::status), so only a push is needed here.
 static void ota_report_cb(const char *msg) {
-  mqtt_ctrl::publish(cfg::topic::kOtaStatus, msg, (int)strlen(msg), 1, false);
+  (void)msg;
+  ha_api::publish_now("ota_status");
 }
 
 // Marque l'image en cours "valide" (annule le rollback) UNIQUEMENT si elle est
@@ -275,11 +275,6 @@ static void ota_confirm_valid_if_pending(void) {
     // Pas de verrou : on retentera au prochain tick de net_wdt.
     ESP_LOGE(TAG, "OTA: mark_app_valid -> %s", esp_err_to_name(err));
   }
-}
-
-// Sink de batch logs -> MQTT (QoS 0 : best-effort, pas de retain).
-static bool log_publish_cb(const char *data, int len) {
-  return mqtt_ctrl::publish(cfg::topic::kLog, data, len, 0, false);
 }
 
 
@@ -313,7 +308,7 @@ extern "C" void app_main(void) {
   sd_log::init_ring();
 
   // Avant tout module réseau : charge la NVS (ou les défauts compilés) et
-  // formate les URLs que camera_session/mic_session/mqtt recevront ensuite.
+  // formate les URLs que camera_session/mic_session recevront ensuite.
   settings::init();
 
   // Préférences de confort (DND). Après la NVS, avant l'UI qui les affiche.
@@ -322,7 +317,7 @@ extern "C" void app_main(void) {
   const esp_err_t bsp_err = bsp::Bsp::instance().init();
   if (bsp_err != ESP_OK) {
     // Écran/tactile morts : on ne lance PAS l'UI (tout appel lv_* planterait),
-    // mais on continue le boot pour que le WiFi + MQTT + OTA restent
+    // mais on continue le boot pour que le WiFi + l'API + OTA restent
     // disponibles — c'est la seule voie de récupération à distance.
     ESP_LOGE(TAG, "BSP init: %s — UI désactivée, boot poursuivi pour l'OTA",
              esp_err_to_name(bsp_err));
@@ -387,10 +382,10 @@ extern "C" void app_main(void) {
   const bool net_up = wifi_net::connect_blocking(settings::get().wifi_ssid,
                                                  settings::get().wifi_pass);
   if (!net_up) {
-    // Boot poursuivi sans IP : le driver retente en arrière-plan et MQTT/OTA
+    // Boot poursuivi sans IP : le driver retente en arrière-plan et l'API/OTA
     // se raccrocheront seuls si le lien monte. Renoncer ici supprimerait les
     // seules voies de récupération à distance.
-    ESP_LOGE(TAG, "WiFi non connecté : MQTT/OTA démarrés quand même");
+    ESP_LOGE(TAG, "WiFi non connecté : API/OTA démarrés quand même");
   }
 
   // Après l'IP : le serveur écoute sur l'interface réseau. Démarré seulement si
@@ -402,49 +397,41 @@ extern "C" void app_main(void) {
     ESP_LOGE(TAG, "serveur de fichiers indisponible (préférence armée)");
   }
 
-  // AVANT mqtt_ctrl::init : celui-ci s'abonne à visio/ota/cmd et visio/log/enable
-  // dans la foulée, et la tâche esp-mqtt peut livrer un message retenu en
-  // quelques millisecondes. Initialisés après, ota_ctrl::request() tombait sur
+  // AVANT ha_api::init : Home Assistant peut appuyer sur un bouton OTA dès sa
+  // connexion. Initialisé après, ota_ctrl::request() tombait sur
   // s_req_sem == nullptr et la commande OTA était jetée sans trace.
   ota_ctrl::init(ota_is_busy, ota_report_cb);
-  log_stream::init(log_publish_cb);
 
-  // Le client MQTT gère sa propre tâche + reconnexion, aucune boucle bloquante
-  // ici : il est démarré même sans IP, il se connectera quand le lien montera.
-  // ha_entities AVANT mqtt_ctrl : c'est lui qui fournit les callbacks, et la
-  // tâche esp-mqtt peut livrer un message retenu quelques millisecondes après
-  // l'abonnement — un catalogue pas encore construit le perdrait.
-  ha_entities::init({mqtt_trigger_cb});
-  mqtt_ctrl::init(ha_entities::callbacks());
+  // Logs live vers les clients de l'API abonnés (option « logs » de HA,
+  // aioesphomeapi-logs). Le sink ne copie que si quelqu'un écoute.
+  if (!dbg_log::add_line_sink(esphome_api::log_line)) {
+    ESP_LOGE(TAG, "sink de logs API non installé (slots pleins)");
+  }
+
+  // ESPHome native API: mDNS + server on 6053. After Wi-Fi (mDNS registers on
+  // the STA netif); the server waits for the link if it is still down.
+  ha_api::init({ring_cb});
 
   // Caméra de présence AVANT la validation OTA : une image qui planterait dès
   // l'init du CSI ou du capteur doit encore pouvoir revenir en arrière. Après
-  // ha_entities : le premier changement d'état y est publié directement.
-  presence::init({[] {
-    ha_entities::publish_now("presence");
-    ha_api::publish_now("presence");
-  }});
+  // ha_api : le premier changement d'état y est publié directement.
+  presence::init({[] { ha_api::publish_now("presence"); }});
 
-  // ESPHome native API (prototype, alongside MQTT): mDNS + server on 6053.
-  // After Wi-Fi (mDNS registers on the STA netif) and after ha_entities, whose
-  // ring hook it shares.
-  ha_api::init({mqtt_trigger_cb});
-
-  // Point de validation "boot sain" = WiFi (déjà connecté) + MQTT connecté.
-  // Attente bornée (~30s) : au-delà, on ne valide pas -> rollback au prochain
-  // reboot (comportement anti-brique voulu si la connectivité est cassée).
-  for (int i = 0; i < 60 && !mqtt_ctrl::connected(); i++) {
+  // Point de validation "boot sain" = WiFi (déjà connecté) + Home Assistant
+  // connecté à l'API. Attente bornée (~60 s : HA se reconnecte sur l'annonce
+  // mDNS, avec un backoff) : au-delà, on ne valide pas ici.
+  for (int i = 0; i < 120 && !ha_api::connected(); i++) {
     vTaskDelay(pdMS_TO_TICKS(500));
   }
-  // Conditionnel : valider une image qui n'a jamais joint le broker vidait le
-  // rollback de son sens. Sans MQTT ici, net_wdt reprend la validation au
-  // premier tick connecté — ou redémarre, et le bootloader revient en arrière.
-  if (mqtt_ctrl::connected()) {
+  // Conditionnel : valider une image qui n'a jamais vu Home Assistant vidait
+  // le rollback de son sens. Sinon net_wdt reprend la validation au premier
+  // tick connecté — ou redémarre, et le bootloader revient en arrière.
+  if (ha_api::connected()) {
     ota_confirm_valid_if_pending();
   }
 
   // Dernier module démarré : la fenêtre de 5 min ne doit pas courir pendant le
-  // boot (WiFi, MQTT et validation OTA viennent tout juste d'aboutir).
+  // boot (WiFi, API et validation OTA viennent tout juste d'aboutir).
   net_wdt::init(net_wdt_freeze_cb, ota_confirm_valid_if_pending);
 
   while (true) {

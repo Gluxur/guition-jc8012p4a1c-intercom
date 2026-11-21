@@ -19,9 +19,8 @@ constexpr const char *kNvsNamespace = "net_cfg";
 constexpr const char *kKeySsid = "ssid";
 constexpr const char *kKeyPass = "pass";
 constexpr const char *kKeyHost = "host";
-constexpr const char *kKeyMqttUser = "mq_user";
-constexpr const char *kKeyMqttPass = "mq_pass";
-constexpr const char *kKeyHaToken = "ha_token";
+// Keys "mq_user", "mq_pass" and "ha_token" from MQTT-era firmware may still
+// sit in NVS: never read again, harmless, wiped by an NVS erase.
 
 Config s_cfg = {};
 bool s_provisioned = false;
@@ -32,8 +31,6 @@ bool s_provisioned = false;
 char s_url_audio[160];
 char s_url_mic[160];
 char s_url_mjpeg2[160];
-char s_uri_mqtt[96];
-char s_url_ha[96];
 char s_url_ota[160];
 
 void copy_default(char *dst, size_t cap, const char *src) {
@@ -64,13 +61,8 @@ void build_urls() {
   snprintf(s_url_mjpeg2, sizeof(s_url_mjpeg2),
            "http://%s:%d/api/stream.mjpeg?src=%s", host, cfg::kGo2rtcPort,
            cfg::kGo2rtcMjpeg2Src);
-  snprintf(s_uri_mqtt, sizeof(s_uri_mqtt), "mqtt://%s:%d", host,
-           cfg::kMqttPort);
-  snprintf(s_url_ha, sizeof(s_url_ha), "https://%s:%d", host, cfg::kHaPort);
   // https et non http : Home Assistant ne sert QUE du TLS sur kHaPort (constaté
-  // le 29/07/2026 — http refuse la connexion, https répond 200). L'URL OTA
-  // partageait le port de l'URL météo avec un schéma différent : le
-  // téléchargement du firmware ne pouvait pas aboutir.
+  // le 29/07/2026 — http refuse la connexion, https répond 200).
   snprintf(s_url_ota, sizeof(s_url_ota), "https://%s:%d%s", host, cfg::kHaPort,
            cfg::kOtaFirmwarePath);
 }
@@ -81,9 +73,6 @@ void init() {
   copy_default(s_cfg.wifi_ssid, kSsidMax, cfg::defaults::kWifiSsid);
   copy_default(s_cfg.wifi_pass, kPassMax, cfg::defaults::kWifiPass);
   copy_default(s_cfg.host, kHostMax, cfg::defaults::kHost);
-  copy_default(s_cfg.mqtt_user, kUserMax, cfg::defaults::kMqttUser);
-  copy_default(s_cfg.mqtt_pass, kPassMax, cfg::defaults::kMqttPass);
-  copy_default(s_cfg.ha_token, kTokenMax, cfg::defaults::kHaToken);
 
   nvs_handle_t h;
   if (nvs_open(kNvsNamespace, NVS_READONLY, &h) == ESP_OK) {
@@ -91,23 +80,19 @@ void init() {
     found += load_string(h, kKeySsid, s_cfg.wifi_ssid, kSsidMax) ? 1 : 0;
     found += load_string(h, kKeyPass, s_cfg.wifi_pass, kPassMax) ? 1 : 0;
     found += load_string(h, kKeyHost, s_cfg.host, kHostMax) ? 1 : 0;
-    found += load_string(h, kKeyMqttUser, s_cfg.mqtt_user, kUserMax) ? 1 : 0;
-    found += load_string(h, kKeyMqttPass, s_cfg.mqtt_pass, kPassMax) ? 1 : 0;
-    found += load_string(h, kKeyHaToken, s_cfg.ha_token, kTokenMax) ? 1 : 0;
     nvs_close(h);
     s_provisioned = found > 0;
-    ESP_LOGI(TAG, "NVS: %d/6 champs chargés", found);
+    ESP_LOGI(TAG, "NVS: %d/3 champs chargés", found);
   } else {
     // Namespace pas encore créé : premier boot, ou config jamais enregistrée.
     ESP_LOGI(TAG, "NVS absente, défauts compilés");
   }
 
   build_urls();
-  // Jamais de log du mot de passe ni du jeton : la sortie UART part aussi vers
-  // le ring de la page Debug et vers MQTT quand les logs live sont activés.
-  ESP_LOGI(TAG, "config: ssid=%s host=%s mqtt_user=%s (provisionnée=%s)",
-           s_cfg.wifi_ssid, s_cfg.host, s_cfg.mqtt_user,
-           s_provisioned ? "oui" : "non");
+  // Jamais de log du mot de passe : la sortie UART part aussi vers le ring de
+  // la page Debug et vers les clients de l'API qui suivent les logs.
+  ESP_LOGI(TAG, "config: ssid=%s host=%s (provisionnée=%s)", s_cfg.wifi_ssid,
+           s_cfg.host, s_provisioned ? "oui" : "non");
 }
 
 const Config &get() { return s_cfg; }
@@ -129,9 +114,9 @@ bool save(const Config &cfg) {
     const char *key;
     const char *value;
   } fields[] = {
-      {kKeySsid, cfg.wifi_ssid},        {kKeyPass, cfg.wifi_pass},
-      {kKeyHost, cfg.host},             {kKeyMqttUser, cfg.mqtt_user},
-      {kKeyMqttPass, cfg.mqtt_pass},    {kKeyHaToken, cfg.ha_token},
+      {kKeySsid, cfg.wifi_ssid},
+      {kKeyPass, cfg.wifi_pass},
+      {kKeyHost, cfg.host},
   };
   for (const auto &f : fields) {
     esp_err_t e = nvs_set_str(h, f.key, f.value);
@@ -162,8 +147,6 @@ bool save(const Config &cfg) {
 const char *go2rtc_audio_url() { return s_url_audio; }
 const char *go2rtc_mic_url() { return s_url_mic; }
 const char *go2rtc_mjpeg2_url() { return s_url_mjpeg2; }
-const char *mqtt_broker_uri() { return s_uri_mqtt; }
-const char *ha_base_url() { return s_url_ha; }
 const char *ota_firmware_url() { return s_url_ota; }
 
 } // namespace settings

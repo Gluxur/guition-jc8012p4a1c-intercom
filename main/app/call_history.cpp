@@ -52,7 +52,7 @@ char s_file_buf[kFileBufDeclared + kFileBufSlack];
 
 Hooks s_hooks = {};
 
-// Écrits par la tâche esp-mqtt (on_call_start) et par la tâche LVGL
+// Écrits par la tâche de l'API (on_call_start) et par la tâche LVGL
 // (on_answered), lus par la tâche cam_stop et par le timer de non-réponse :
 // atomiques, jamais volatile.
 std::atomic<bool> s_pending{false};

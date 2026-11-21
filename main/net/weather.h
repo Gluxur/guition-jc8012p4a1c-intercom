@@ -28,17 +28,16 @@ struct Forecast {
   int64_t fetched_at_us = 0; // esp_timer_get_time() à la fin du fetch
 };
 
-/* Parse la réponse du service weather.get_forecasts (?return_response) :
- * service_response -> <première entité> -> forecast[]. Remplit au plus
- * 7 jours. false si JSON invalide ou forecast absent/vide. Défini dans
- * weather_parse.cpp (logique pure, testée sur host :
- * test/test_weather_parse.cpp). */
+/* Parses the weather.get_forecasts action response reshaped by weather.cpp's
+ * template: response -> forecast[]. Fills at most 7 days. false if the JSON
+ * is invalid or forecast missing/empty. Defined in weather_parse.cpp (pure
+ * logic, host-tested: test/test_weather_parse.cpp). */
 bool parse_forecast_json(const char *json, Forecast &out);
 
-/* Parse la réponse GET /api/states/<entity> : "state" (condition) +
- * "attributes.{temperature,humidity,pressure,wind_speed}". Retourne true
- * si le JSON est valide (champs absents -> NAN, pas un échec). Défini dans
- * weather_parse.cpp. */
+/* Same document, response -> current: "state" (condition) +
+ * "attributes.{temperature,humidity,pressure,wind_speed}". true if the JSON
+ * is valid and `current` present (missing fields -> NAN, not a failure).
+ * Defined in weather_parse.cpp. */
 bool parse_current_json(const char *json, CurrentConditions &out);
 
 /* Copie du cache, prise sous verrou. PAS une référence : la tâche weather_fetch
@@ -49,11 +48,12 @@ bool parse_current_json(const char *json, CurrentConditions &out);
 [[nodiscard]] Forecast cached();
 [[nodiscard]] bool cache_stale(int64_t max_age_us);
 
-/* Lance fetch HTTP + parse dans une tâche FreeRTOS courte auto-détruite.
+/* Calls weather.get_forecasts through the ESPHome API (no token: HA runs the
+ * action for the device) and parses it, in a short self-deleting task.
  * done_cb(ok) est appelé depuis cette tâche — prendre le mutex LVGL avant
  * tout lv_*. Si un fetch est déjà en cours, l'appel est ignoré. `ok` reflète
- * uniquement le fetch forecast (get_forecasts) ; le fetch des conditions
- * actuelles (GET état) est best-effort et n'affecte pas `ok`. */
+ * uniquement les prévisions ; les conditions actuelles, dans la même réponse,
+ * sont best-effort et n'affectent pas `ok`. */
 void fetch_async(void (*done_cb)(bool ok));
 
 } // namespace weather

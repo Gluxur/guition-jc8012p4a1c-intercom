@@ -13,19 +13,19 @@
 #
 # ⚠️ Ce script REMPLACE toute la partition NVS (0x9000, 24 Ko). Tout ce qui n'est
 # pas passe en parametre est perdu et repart sur les defauts compiles :
-#   - namespace net_cfg  : ssid, pass, host, mq_user, mq_pass, ha_token
-#   - namespace audio_cfg: spk_vol (defaut 50), mic_gain (83), backlight (100)
+#   - namespace net_cfg    : ssid, pass, host
+#   - namespace audio_cfg  : spk_vol (defaut 50), mic_gain (83), backlight (100)
+#   - namespace esphome_api: la cle de chiffrement que Home Assistant a envoyee.
+#     Effacee, la carte redevient "non provisionnee" : HA echoue alors avec
+#     "invalid encryption key" et demande une reconfiguration de l'appareil
+#     (supprimer puis re-adopter l'appareil ESPHome dans HA).
 # Un champ omis ici n'est pas ecrit dans l'image, et `settings` retombe alors sur
-# cfg::defaults — c'est voulu : inutile de recopier le jeton HA pour changer
-# juste de box Wi-Fi.
+# cfg::defaults.
 
 param(
   [Parameter(Mandatory = $true)][string]$Ssid,
   [Parameter(Mandatory = $true)][string]$Pass,
   [string]$HostAddr = "",
-  [string]$MqttUser = "",
-  [string]$MqttPass = "",
-  [string]$HaToken  = "",
   [int]$SpkVol    = -1,
   [int]$MicGain   = -1,
   [int]$Backlight = -1,
@@ -61,9 +61,6 @@ try {
   $lines += "ssid,data,string,$Ssid"
   $lines += "pass,data,string,$Pass"
   if ($HostAddr) { $lines += "host,data,string,$HostAddr" }
-  if ($MqttUser) { $lines += "mq_user,data,string,$MqttUser" }
-  if ($MqttPass) { $lines += "mq_pass,data,string,$MqttPass" }
-  if ($HaToken)  { $lines += "ha_token,data,string,$HaToken" }
 
   if ($SpkVol -ge 0 -or $MicGain -ge 0 -or $Backlight -ge 0) {
     $lines += "audio_cfg,namespace,,"

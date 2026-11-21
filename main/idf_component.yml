@@ -5,8 +5,6 @@ dependencies:
   # cJSON (net/weather_parse.cpp, net/gcal_parse.cpp) : le composant `json` a été
   # retiré d'ESP-IDF en 6.0 et déplacé vers le registre sous ce nom.
   espressif/cjson: "^1.7.18"
-  # esp-mqtt (sys/mqtt_ctrl.cpp) : même sort que `json`, sorti d'ESP-IDF en 6.0.
-  espressif/mqtt: "^1.1.0"
   # Plancher relevé à 1.5.3 : le lock figeait 1.5.0, dont le chemin DTLS pour
   # ESP-IDF 6 / mbedTLS 4 (src/dtls_srtp_v6.c, psa_generate_key +
   # mbedtls_pk_wrap_psa) est neuf et échouait au handshake serveur

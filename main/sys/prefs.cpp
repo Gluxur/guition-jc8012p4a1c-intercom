@@ -22,7 +22,7 @@ constexpr char kFileSrvKey[] = "filesrv";
 constexpr char kEchoKey[] = "echo";
 constexpr char kThemeKey[] = "theme";
 
-// Écrit par la tâche LVGL (page Configuration), lu par la tâche esp-mqtt
+// Écrit par la tâche LVGL (page Configuration), lu par la tâche de l'API
 // (déclencheur de sonnerie) : atomique, jamais volatile.
 std::atomic<bool> s_dnd{false};
 
@@ -39,7 +39,7 @@ std::atomic<uint8_t> s_ring_volume{100};
 // appelant ESP_LOGx : atomique, obligatoirement.
 std::atomic<bool> s_sd_log{true};
 
-// Écrit depuis la tâche LVGL (page Configuration) ET la tâche esp-mqtt (entité
+// Écrit depuis la tâche LVGL (page Configuration) ET la tâche de l'API (entité
 // Home Assistant) : atomique, obligatoirement.
 std::atomic<bool> s_file_server{false};
 

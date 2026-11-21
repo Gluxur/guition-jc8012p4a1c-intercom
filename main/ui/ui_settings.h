@@ -1,7 +1,7 @@
 #pragma once
 
 // Page Configuration : saisie tactile des identifiants réseau (WiFi, hôte du
-// serveur, MQTT, jeton Home Assistant) enregistrés en NVS via `settings::`.
+// serveur go2rtc / Home Assistant) enregistrés en NVS via `settings::`.
 // Les valeurs saisies ne prennent effet qu'au redémarrage — cf. commentaire de
 // settings::save().
 #include "ui.h"

@@ -7,16 +7,12 @@
 // screen. Every field is optional: anything left out stays empty and must be
 // entered on the Settings page (or provisioned with tools/provision_nvs.ps1).
 //
-// Values stored in NVS always win over these defaults.
+// Values stored in NVS always win over these defaults. Home Assistant needs no
+// credential here: it discovers the board as an ESPHome device and provisions
+// the API encryption key itself.
 
 #define APP_SECRET_WIFI_SSID "my-wifi"
 #define APP_SECRET_WIFI_PASS "my-wifi-password"
 
-// Machine running go2rtc, Home Assistant and the MQTT broker.
+// Machine running go2rtc and Home Assistant.
 #define APP_SECRET_HOST "192.168.1.10"
-
-#define APP_SECRET_MQTT_USER "videophone"
-#define APP_SECRET_MQTT_PASS "change-me"
-
-// Home Assistant long-lived access token (Profile > Security).
-#define APP_SECRET_HA_TOKEN ""

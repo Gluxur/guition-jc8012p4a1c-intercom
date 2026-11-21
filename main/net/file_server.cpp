@@ -272,7 +272,7 @@ const httpd_uri_t kUris[] = {
 
 } // namespace
 
-// Sérialise start/stop : appelés depuis esp-mqtt (entité HA) ET depuis la
+// Sérialise start/stop : appelés depuis la tâche de l'API (entité HA) ET depuis la
 // tâche LVGL (interrupteur de la page Configuration). Le test-puis-action sur
 // s_running permettait un double httpd_start, ou un stop() libérant s_xfer
 // pendant un start() en cours.

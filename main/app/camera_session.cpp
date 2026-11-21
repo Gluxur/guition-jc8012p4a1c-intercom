@@ -79,7 +79,7 @@ std::atomic<bool> s_connected{false};
 std::atomic<bool> s_ringback_wanted{false};
 // Une ouverture est en vol dans start_common (esp_peer_open dure ~80 ms, plus
 // à la première session). Sans ce jeton, s_active ne passait à vrai qu'à la
-// FIN de l'ouverture : un second trigger MQTT dans la fenêtre relançait un
+// FIN de l'ouverture : un second coup de sonnette dans la fenêtre relançait un
 // esp_peer_open concurrent (s_peer écrasé, deux peer_loop, deux mjpeg_rnd), et
 // un Retour dans la fenêtre lançait un démontage pendant que start_common
 // rouvrait tout derrière l'accueil — session orpheline, active() vrai à vie.
@@ -335,7 +335,7 @@ bool init(const char *audio_url, const char *mjpeg_url) {
   return signaling::init_channel(s_channel, "cam");
 }
 
-// Ouverture en vol comprise : les gardes (trigger MQTT, OTA, net_wdt, file
+// Ouverture en vol comprise : les gardes (sonnette, OTA, net_wdt, file
 // server) doivent voir la session dès son premier instant.
 bool active() {
   return s_active.load(std::memory_order_relaxed) ||
@@ -404,7 +404,7 @@ static void start_common_locked() {
   const uint32_t gen =
       s_generation.fetch_add(1, std::memory_order_relaxed) + 1;
   s_answer_gen.store(0);
-  // s_ringback_wanted, lui, n'est PAS remis à zéro : le trigger MQTT le pose
+  // s_ringback_wanted, lui, n'est PAS remis à zéro : la sonnette le pose
   // avant que cam2_defer n'arrive ici.
   s_connected.store(false);
 

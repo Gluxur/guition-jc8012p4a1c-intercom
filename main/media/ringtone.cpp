@@ -41,7 +41,7 @@ constexpr Note kMelody[] = {
 constexpr size_t kMelodyLen = sizeof(kMelody) / sizeof(kMelody[0]);
 
 std::atomic<bool> s_armed{false};
-// Atomique : écrit par start() (trigger MQTT, UI) pendant que aud_render le lit
+// Atomique : écrit par start() (sonnette, UI) pendant que aud_render le lit
 // dans is_ringing(). Un int64 se lit en deux mots sur RV32 : une lecture
 // déchirée au moment d'une re-sonnerie pouvait faire croire aux 30 s écoulées
 // et désarmer la sonnerie aussitôt relancée.
@@ -96,7 +96,7 @@ uint16_t gain_q15_for(uint8_t pct) {
   return static_cast<uint16_t>(g);
 }
 
-// Atomiques : écrits par l'UI / MQTT, lus par aud_render.
+// Atomiques : écrits par l'UI / l'API, lus par aud_render.
 std::atomic<uint8_t> s_volume_pct{100};
 std::atomic<uint16_t> s_gain_q15{static_cast<uint16_t>(
     static_cast<uint64_t>(100) * kAmplitude * kQ15One / (100ull * kFullScale))};

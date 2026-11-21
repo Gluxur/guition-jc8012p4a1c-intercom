@@ -7,13 +7,14 @@
 
 namespace {
 
-// Enveloppe la réponse du service weather.get_forecasts : le parser doit
-// prendre le PREMIER enfant de service_response quel que soit son nom, donc les
-// tests varient délibérément le nom d'entité.
-std::string wrap(const std::string &forecast_array,
-                 const char *entity = "weather.maison") {
-  return std::string("{\"service_response\":{\"") + entity +
-         "\":{\"forecast\":" + forecast_array + "}}}";
+// Wraps a forecast array the way weather.cpp's response template shapes the
+// action response ({"response": {"forecast": [...], "current": {...}}}).
+std::string wrap(const std::string &forecast_array) {
+  return "{\"response\":{\"forecast\":" + forecast_array + "}}";
+}
+
+std::string wrap_current(const std::string &current) {
+  return "{\"response\":{\"current\":" + current + "}}";
 }
 
 weather::Forecast parse(const std::string &json, bool expect_ok = true) {
@@ -29,14 +30,21 @@ TEST(WeatherParse, RejectsMalformedJson) {
   EXPECT_FALSE(weather::parse_forecast_json("{ pas du json", f));
 }
 
-TEST(WeatherParse, RejectsAMissingServiceResponse) {
+TEST(WeatherParse, RejectsAMissingResponse) {
   weather::Forecast f;
   EXPECT_FALSE(weather::parse_forecast_json("{\"autre\":1}", f));
 }
 
-TEST(WeatherParse, RejectsAnEmptyServiceResponse) {
+TEST(WeatherParse, RejectsAResponseWithoutForecast) {
   weather::Forecast f;
-  EXPECT_FALSE(weather::parse_forecast_json("{\"service_response\":{}}", f));
+  EXPECT_FALSE(weather::parse_forecast_json("{\"response\":{}}", f));
+}
+
+TEST(WeatherParse, RejectsAResponseThatIsAString) {
+  // A template that did not render to a dict reaches us as a string.
+  weather::Forecast f;
+  EXPECT_FALSE(
+      weather::parse_forecast_json("{\"response\":\"{'forecast'\"}", f));
 }
 
 TEST(WeatherParse, RejectsAnEmptyForecastArray) {
@@ -56,18 +64,6 @@ TEST(WeatherParse, LeavesCountAtZeroWhenParsingFails) {
   ASSERT_FALSE(weather::parse_forecast_json("{ pas du json", f));
   EXPECT_EQ(0, f.count);
   EXPECT_FALSE(f.valid);
-}
-
-// --- Nom d'entité -----------------------------------------------------------
-
-TEST(WeatherParse, IgnoresTheEntityName) {
-  // Le parser ne doit pas être couplé à cfg::kHaWeatherEntity : renommer
-  // l'entité côté HA ne doit pas éteindre l'écran météo.
-  const weather::Forecast f = parse(
-      wrap("[{\"datetime\":\"2026-07-11T12:00:00+00:00\","
-           "\"temperature\":28.4}]",
-           "weather.un_nom_totalement_different"));
-  EXPECT_EQ(1, f.count);
 }
 
 // --- Jour de la semaine -----------------------------------------------------
@@ -184,13 +180,15 @@ TEST(WeatherParse, CapsTheForecastAtSevenDays) {
   EXPECT_NEAR(16.0f, f.days[6].temp_max, 0.01f); // le 7e, pas le 14e
 }
 
-// --- Conditions actuelles (GET /api/states) ---------------------------------
+// --- Current conditions (response.current) ----------------------------------
 
 TEST(WeatherParse, ReadsCurrentConditions) {
   weather::CurrentConditions cc;
   ASSERT_TRUE(weather::parse_current_json(
-      "{\"state\":\"partlycloudy\",\"attributes\":{\"temperature\":24.1,"
-      "\"humidity\":62,\"pressure\":1013.2,\"wind_speed\":12.3}}",
+      wrap_current("{\"state\":\"partlycloudy\",\"attributes\":{"
+                   "\"temperature\":24.1,\"humidity\":62,"
+                   "\"pressure\":1013.2,\"wind_speed\":12.3}}")
+          .c_str(),
       cc));
   EXPECT_TRUE(cc.valid);
   EXPECT_STREQ("partlycloudy", cc.condition);
@@ -206,11 +204,30 @@ TEST(WeatherParse, RejectsMalformedCurrentJson) {
   EXPECT_FALSE(cc.valid);
 }
 
+TEST(WeatherParse, RejectsAResponseWithoutCurrent) {
+  weather::CurrentConditions cc;
+  EXPECT_FALSE(weather::parse_current_json(wrap("[]").c_str(), cc));
+  EXPECT_FALSE(cc.valid);
+}
+
+TEST(WeatherParse, CurrentAttributesThatAreNullAreNan) {
+  // state_attr() renders None for a missing attribute: JSON null.
+  weather::CurrentConditions cc;
+  ASSERT_TRUE(weather::parse_current_json(
+      wrap_current("{\"state\":\"sunny\",\"attributes\":{"
+                   "\"temperature\":null,\"humidity\":40}}")
+          .c_str(),
+      cc));
+  EXPECT_TRUE(std::isnan(cc.temperature));
+  EXPECT_NEAR(40.0f, cc.humidity, 0.01f);
+}
+
 TEST(WeatherParse, MissingAttributesAreNanButStillValid) {
   // Champs absents = affichage partiel, pas un échec de fetch : le bandeau
   // garde la condition et masque les mesures manquantes.
   weather::CurrentConditions cc;
-  ASSERT_TRUE(weather::parse_current_json("{\"state\":\"rainy\"}", cc));
+  ASSERT_TRUE(weather::parse_current_json(
+      wrap_current("{\"state\":\"rainy\"}").c_str(), cc));
   EXPECT_TRUE(cc.valid);
   EXPECT_STREQ("rainy", cc.condition);
   EXPECT_TRUE(std::isnan(cc.temperature));
@@ -222,7 +239,7 @@ TEST(WeatherParse, MissingAttributesAreNanButStillValid) {
 TEST(WeatherParse, MissingStateLeavesTheConditionEmpty) {
   weather::CurrentConditions cc;
   ASSERT_TRUE(weather::parse_current_json(
-      "{\"attributes\":{\"temperature\":20.0}}", cc));
+      wrap_current("{\"attributes\":{\"temperature\":20.0}}").c_str(), cc));
   EXPECT_STREQ("", cc.condition);
   EXPECT_NEAR(20.0f, cc.temperature, 0.01f);
 }
@@ -230,7 +247,8 @@ TEST(WeatherParse, MissingStateLeavesTheConditionEmpty) {
 TEST(WeatherParse, UnavailableEntityYieldsNoNumbers) {
   // État réel d'une entité HS : state="unavailable", attributs absents.
   weather::CurrentConditions cc;
-  ASSERT_TRUE(weather::parse_current_json("{\"state\":\"unavailable\"}", cc));
+  ASSERT_TRUE(weather::parse_current_json(
+      wrap_current("{\"state\":\"unavailable\"}").c_str(), cc));
   EXPECT_STREQ("unavailable", cc.condition);
   EXPECT_TRUE(std::isnan(cc.temperature));
 }

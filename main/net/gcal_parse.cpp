@@ -1,7 +1,9 @@
-// Décodage pur de la réponse /api/calendars/<entity> — séparé de gcal.cpp
-// (HTTP, tâche FreeRTOS, cache sous mutex) pour être compilable et testable
-// par le compilateur du PC : cf. test/test_gcal_parse.cpp. Même motif que
-// components/bsp/ppa_srm_quirk.cpp. Aucune dépendance ESP-IDF au-delà du log.
+// Pure decoding of the calendar.get_events action response, reshaped by the
+// template of gcal.cpp into {"response": [<event>, ...]} where each event has
+// "summary" and "start"/"end" as {"dateTime": ...} or {"date": ...} (the
+// layout of HA's REST calendar API, which this parser was written for).
+// Split from gcal.cpp (API call, FreeRTOS task, cache under mutex) so the PC
+// compiler can test it: test/test_gcal_parse.cpp.
 
 #include "net/gcal.h"
 
@@ -62,14 +64,15 @@ static bool parse_rfc3339(const char *s, bool has_time, int64_t &epoch_out) {
 
 bool parse_events_json(const char *json, EventList &out) {
   out = EventList{};
-  cJSON *root = cJSON_Parse(json);
-  if (!root) {
+  cJSON *doc = cJSON_Parse(json);
+  if (!doc) {
     ESP_LOGE(TAG, "JSON invalide");
     return false;
   }
+  cJSON *root = cJSON_GetObjectItem(doc, "response");
   if (!cJSON_IsArray(root)) {
-    ESP_LOGE(TAG, "réponse pas un tableau");
-    cJSON_Delete(root);
+    ESP_LOGE(TAG, "response absent ou pas un tableau");
+    cJSON_Delete(doc);
     return false;
   }
   int count = 0;
@@ -129,7 +132,7 @@ bool parse_events_json(const char *json, EventList &out) {
     out.events[j + 1] = key;
   }
 
-  cJSON_Delete(root);
+  cJSON_Delete(doc);
   return true;
 }
 

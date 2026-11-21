@@ -26,6 +26,7 @@ enum class Kind : uint8_t {
   kNumber,
   kSelect,
   kButton,
+  kLight, // brightness-only light (the screen backlight)
 };
 
 // Values of api.proto's EntityCategory.
@@ -50,7 +51,8 @@ struct Entity {
   const char *const *options = nullptr;
   uint8_t option_count = 0;
   // State. kBinarySensor/kSwitch: get_bool; kSensor/kNumber: get_float (NAN
-  // = unknown); kTextSensor/kSelect: get_text. nullptr = no state pushed.
+  // = unknown); kTextSensor/kSelect: get_text; kLight: get_bool (on) and
+  // get_float (brightness 0..1). nullptr = no state pushed.
   bool (*get_bool)() = nullptr;
   float (*get_float)() = nullptr;
   void (*get_text)(char *out, size_t cap) = nullptr;
@@ -60,8 +62,13 @@ struct Entity {
   void (*set_float)(float) = nullptr;
   void (*set_text)(const char *) = nullptr;
   void (*press)() = nullptr;
+  // kLight: `state` -1 = unchanged, 0 = off, 1 = on; `brightness` 0..1 or
+  // NAN = unchanged.
+  void (*set_light)(int state, float brightness) = nullptr;
   // get_*() reads the SD card: skipped while `Config::busy` says so.
   bool sd_touching = false;
+  // Still refreshed every 30 s while `Config::busy` (e.g. the in-call state).
+  bool refresh_when_busy = false;
 };
 
 struct Config {
@@ -92,6 +99,11 @@ void publish(const char *object_id);
 // True while at least one client (normally HA) is subscribed to states.
 [[nodiscard]] bool connected();
 
+// dbg_log line sink: forwards log lines to clients that subscribed to logs
+// (HA's "subscribe to logs" option, `aioesphomeapi-logs`, ...). Called from
+// any task in the logging path: only copies into a ring, never blocks.
+void log_line(const char *line, size_t len);
+
 // --- Home Assistant actions -------------------------------------------------
 
 struct Kv {
@@ -103,15 +115,23 @@ struct Kv {
 // "Allow the device to perform Home Assistant actions" is off), or no answer
 // within 20 s. `json`/`len`: the response body, valid during the callback
 // only, NOT NUL-terminated: {"response": <action response or template>}.
-using ActionDone = void (*)(bool ok, const char *error, const char *json,
-                            size_t len);
+using ActionDone = void (*)(void *ctx, bool ok, const char *error,
+                            const char *json, size_t len);
 
 // Queues `service` ("weather.get_forecasts") with string `data`, asking for
 // its response. `response_template`: optional Jinja rendered by HA with the
-// variable `response`, to shrink the payload before it crosses the network.
-// All strings are copied. Returns false if no client is subscribed to
-// actions or the queue is full. `done` runs in the server task.
+// variable `response` (and the usual template functions: states(),
+// state_attr()...), to reshape or shrink the payload. All strings are copied.
+// Returns false if no client is subscribed to actions or the queue is full;
+// otherwise `done(ctx, ...)` is called exactly once, in the server task.
 bool call_action(const char *service, const Kv *data, size_t n,
-                 const char *response_template, ActionDone done);
+                 const char *response_template, ActionDone done, void *ctx);
+
+// Blocking variant for fetch tasks: waits for the answer and copies the body
+// into `out` (NUL-terminated). Returns false on any failure, including a body
+// of `cap` bytes or more. Never call it from the server task itself.
+bool call_action_sync(const char *service, const Kv *data, size_t n,
+                      const char *response_template, char *out, size_t cap,
+                      size_t *len);
 
 } // namespace esphome_api

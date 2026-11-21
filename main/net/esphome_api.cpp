@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h" // xTaskCreatePinnedToCoreWithCaps
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
 #include "mdns.h"
@@ -63,15 +64,20 @@ enum Msg : uint16_t {
   kDeviceInfoResponse = 10,
   kListEntitiesRequest = 11,
   kListBinarySensor = 12,
+  kListLight = 15,
   kListSensor = 16,
   kListSwitch = 17,
   kListTextSensor = 18,
   kListEntitiesDone = 19,
   kSubscribeStatesRequest = 20,
   kBinarySensorState = 21,
+  kLightState = 24,
   kSensorState = 25,
   kSwitchState = 26,
   kTextSensorState = 27,
+  kSubscribeLogsRequest = 28,
+  kSubscribeLogsResponse = 29,
+  kLightCommand = 32,
   kSwitchCommand = 33,
   kSubscribeHaServices = 34,
   kHaActionRequest = 35,
@@ -105,6 +111,8 @@ struct Client {
   bool hello = false;
   bool sub_states = false;
   bool sub_services = false;
+  bool sub_logs = false;
+  uint8_t log_level = 0; // LogLevel requested by the client
   bool closing = false; // close once the current batch is processed
   int64_t last_rx_us = 0;
   char peer[16] = {};
@@ -115,11 +123,13 @@ struct QueuedAction {
   size_t len;
   uint32_t call_id;
   ActionDone done;
+  void *ctx;
 };
 
 struct Pending {
   uint32_t call_id = 0;
   ActionDone done = nullptr;
+  void *ctx = nullptr;
   int64_t deadline_us = 0;
 };
 
@@ -129,6 +139,17 @@ Pending s_pending[4];
 QueueHandle_t s_actions = nullptr;
 std::atomic<uint64_t> s_dirty{0};
 std::atomic<int> s_subscribed{0};
+std::atomic<int> s_log_subscribers{0};
+
+// Log lines waiting to be sent: filled by log_line() from any task, drained
+// by the server task. A byte ring of [be16 len][bytes] records; when full the
+// newest line is dropped (the reader is the slow side, it catches up).
+constexpr size_t kLogRingBytes = 16 * 1024;
+uint8_t *s_log_ring = nullptr;
+size_t s_log_head = 0; // write offset
+size_t s_log_tail = 0; // read offset
+size_t s_log_used = 0;
+portMUX_TYPE s_log_mux = portMUX_INITIALIZER_UNLOCKED;
 std::atomic<uint32_t> s_next_call_id{1};
 
 uint8_t s_psk[noise::kKeyLen] = {};
@@ -378,6 +399,12 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
     w.u32(7, cat);
     w.str(8, e.device_class);
     return kListButton;
+  case Kind::kLight:
+    w.boolean(5, true); // legacy_supports_brightness (pre-color-mode clients)
+    w.u32(12, 3);       // supported_color_modes: COLOR_MODE_BRIGHTNESS
+    w.str(14, e.icon);
+    w.u32(15, cat);
+    return kListLight;
   }
   return 0;
 }
@@ -418,6 +445,17 @@ uint16_t encode_state(const Entity &e, esphome_pb::Writer &w) {
     w.str(2, buf);
     return e.kind == Kind::kSelect ? kSelectState : kTextSensorState;
   }
+  case Kind::kLight: {
+    if (e.get_bool == nullptr) {
+      return 0;
+    }
+    w.boolean(2, e.get_bool());
+    if (e.get_float != nullptr) {
+      w.f32(3, e.get_float());
+    }
+    w.u32(11, 3); // COLOR_MODE_BRIGHTNESS
+    return kLightState;
+  }
   case Kind::kButton:
     return 0;
   }
@@ -431,7 +469,7 @@ void push_state(size_t idx) {
   const Entity &e = s_cfg->entities[idx];
   const bool busy = s_cfg->busy != nullptr && s_cfg->busy();
   if (busy && e.sd_touching) {
-    return;
+    return; // SD I/O during a call adds jitter to the MJPEG drain
   }
   esphome_pb::Writer w = writer();
   const uint16_t type = encode_state(e, w);
@@ -550,9 +588,29 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
   bool b = false;
   float f = NAN;
   char text[64] = {};
+  bool has_state = false, has_bri = false;
+  bool state_v = false;
+  float bri_v = 0.0f; // proto3: an absent float is 0
   while (r.next()) {
     if (r.field() == 1) {
       key = r.as_fixed32();
+    } else if (type == kLightCommand) {
+      switch (r.field()) {
+      case 2:
+        has_state = r.as_bool();
+        break;
+      case 3:
+        state_v = r.as_bool();
+        break;
+      case 4:
+        has_bri = r.as_bool();
+        break;
+      case 5:
+        bri_v = r.as_f32();
+        break;
+      default:
+        break;
+      }
     } else if (r.field() == 2) {
       if (type == kSwitchCommand) {
         b = r.as_bool();
@@ -567,6 +625,9 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
       }
     }
   }
+  // proto3 drops false/0: has_* tells "off" or "brightness 0" from "absent".
+  const int light_state = has_state ? (state_v ? 1 : 0) : -1;
+  const float light_bri = has_bri ? bri_v : NAN;
   size_t idx;
   const Entity *e = entity_by_key(key, &idx);
   if (e == nullptr) {
@@ -592,6 +653,11 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
   case kButtonCommand:
     if (e->press) {
       e->press();
+    }
+    break;
+  case kLightCommand:
+    if (e->set_light) {
+      e->set_light(light_state, light_bri);
     }
     break;
   default:
@@ -680,8 +746,9 @@ void on_action_response(esphome_pb::Reader &r) {
   for (Pending &pd : s_pending) {
     if (pd.call_id == call_id && pd.done != nullptr) {
       const ActionDone done = pd.done;
+      void *ctx = pd.ctx;
       pd = Pending{};
-      done(success, error, (const char *)data, data_len);
+      done(ctx, success, error, (const char *)data, data_len);
       return;
     }
   }
@@ -738,7 +805,20 @@ void dispatch(Client &c, uint16_t type, const uint8_t *data, size_t len) {
   case kNumberCommand:
   case kSelectCommand:
   case kButtonCommand:
+  case kLightCommand:
     on_command(type, r);
+    break;
+  case kSubscribeLogsRequest:
+    c.log_level = 3; // LOG_LEVEL_INFO when the field is absent
+    while (r.next()) {
+      if (r.field() == 1) {
+        c.log_level = (uint8_t)r.as_u32();
+      }
+    }
+    if (!c.sub_logs) {
+      c.sub_logs = true;
+      s_log_subscribers.fetch_add(1);
+    }
     break;
   case kNoiseSetKeyRequest:
     on_set_key(c, r);
@@ -943,6 +1023,9 @@ void close_client(Client &c) {
   if (c.sub_states) {
     s_subscribed.fetch_sub(1);
   }
+  if (c.sub_logs) {
+    s_log_subscribers.fetch_sub(1);
+  }
   delete c.hs;
   heap_caps_free(c.rx);
   c.send.clear();
@@ -953,7 +1036,8 @@ void close_client(Client &c) {
   c.rx = nullptr;
   c.rx_len = c.rx_cap = 0;
   c.hs = nullptr;
-  c.hello = c.sub_states = c.sub_services = c.closing = false;
+  c.hello = c.sub_states = c.sub_services = c.sub_logs = c.closing = false;
+  c.log_level = 0;
 }
 
 void accept_client(int listen_fd) {
@@ -1036,19 +1120,97 @@ void drain_actions() {
     if (sent) {
       slot->call_id = qa.call_id;
       slot->done = qa.done;
+      slot->ctx = qa.ctx;
       slot->deadline_us = esp_timer_get_time() + kActionTimeoutUs;
     } else if (qa.done != nullptr) {
-      qa.done(false, "not sent", nullptr, 0);
+      qa.done(qa.ctx, false, "not sent", nullptr, 0);
     }
   }
   const int64_t now = esp_timer_get_time();
   for (Pending &pd : s_pending) {
     if (pd.done != nullptr && now > pd.deadline_us) {
       const ActionDone done = pd.done;
+      void *ctx = pd.ctx;
       pd = Pending{};
       ESP_LOGW(TAG, "action call timed out (is \"Allow the device to perform "
                     "Home Assistant actions\" on?)");
-      done(false, "timeout", nullptr, 0);
+      done(ctx, false, "timeout", nullptr, 0);
+    }
+  }
+}
+
+// --- Logs ---------------------------------------------------------------------
+
+uint8_t level_of(const char *line, size_t len) {
+  // ESP-IDF lines start with the level letter, possibly after an ANSI colour
+  // sequence ("\033[0;32mI (123) tag: ...").
+  size_t i = 0;
+  if (len > 0 && line[0] == '\033') {
+    while (i < len && line[i] != 'm') {
+      i++;
+    }
+    i++;
+  }
+  switch (i < len ? line[i] : 'I') {
+  case 'E':
+    return 1;
+  case 'W':
+    return 2;
+  case 'D':
+    return 5;
+  case 'V':
+    return 6;
+  default:
+    return 3;
+  }
+}
+
+size_t ring_pop(uint8_t *out, size_t cap) {
+  size_t n = 0;
+  taskENTER_CRITICAL(&s_log_mux);
+  if (s_log_used >= 2) {
+    const size_t len = (size_t)s_log_ring[s_log_tail] << 8 |
+                       s_log_ring[(s_log_tail + 1) % kLogRingBytes];
+    s_log_tail = (s_log_tail + 2) % kLogRingBytes;
+    for (size_t i = 0; i < len; i++) {
+      if (i < cap) {
+        out[i] = s_log_ring[s_log_tail];
+      }
+      s_log_tail = (s_log_tail + 1) % kLogRingBytes;
+    }
+    s_log_used -= 2 + len;
+    n = len < cap ? len : cap;
+  }
+  taskEXIT_CRITICAL(&s_log_mux);
+  return n;
+}
+
+void drain_logs() {
+  if (s_log_subscribers.load() == 0) {
+    return;
+  }
+  uint8_t line[256];
+  // Bounded per loop pass: a log storm must not starve commands and pings.
+  for (int k = 0; k < 32; k++) {
+    const size_t n = ring_pop(line, sizeof line);
+    if (n == 0) {
+      return;
+    }
+    size_t len = n;
+    while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+      len--;
+    }
+    const uint8_t lvl = level_of(reinterpret_cast<const char *>(line), len);
+    esphome_pb::Writer w = writer();
+    w.u32(1, lvl);
+    w.bytes(3, line, len);
+    if (!w.ok()) {
+      continue;
+    }
+    for (Client &c : s_clients) {
+      if (c.fd >= 0 && c.sub_logs && lvl <= c.log_level) {
+        send_msg(c, kSubscribeLogsResponse, w.size());
+      }
     }
   }
 }
@@ -1122,6 +1284,7 @@ void server_task(void *) {
     }
 
     drain_actions();
+    drain_logs();
 
     const uint64_t dirty = s_dirty.exchange(0);
     for (size_t i = 0; dirty != 0 && i < s_cfg->entity_count; i++) {
@@ -1133,8 +1296,9 @@ void server_task(void *) {
     const int64_t now = esp_timer_get_time();
     if (now >= next_refresh) {
       next_refresh = now + kRefreshUs;
-      if (s_cfg->busy == nullptr || !s_cfg->busy()) {
-        for (size_t i = 0; i < s_cfg->entity_count; i++) {
+      const bool busy = s_cfg->busy != nullptr && s_cfg->busy();
+      for (size_t i = 0; i < s_cfg->entity_count; i++) {
+        if (!busy || s_cfg->entities[i].refresh_when_busy) {
           push_state(i);
         }
       }
@@ -1172,8 +1336,10 @@ bool start(const Config &cfg) {
   s_dec = static_cast<uint8_t *>(
       heap_caps_malloc(kRxMax + 16, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   s_actions = xQueueCreate(4, sizeof(QueuedAction));
+  s_log_ring = static_cast<uint8_t *>(
+      heap_caps_malloc(kLogRingBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (s_tx == nullptr || s_enc == nullptr || s_dec == nullptr ||
-      s_actions == nullptr) {
+      s_actions == nullptr || s_log_ring == nullptr) {
     ESP_LOGE(TAG, "out of memory");
     return false;
   }
@@ -1210,8 +1376,29 @@ void publish(const char *object_id) {
 
 bool connected() { return s_subscribed.load() > 0; }
 
+void log_line(const char *line, size_t len) {
+  if (s_log_ring == nullptr || s_log_subscribers.load() == 0 || len == 0) {
+    return;
+  }
+  if (len > 255) {
+    len = 255;
+  }
+  taskENTER_CRITICAL(&s_log_mux);
+  if (s_log_used + 2 + len <= kLogRingBytes) {
+    s_log_ring[s_log_head] = (uint8_t)(len >> 8);
+    s_log_ring[(s_log_head + 1) % kLogRingBytes] = (uint8_t)len;
+    s_log_head = (s_log_head + 2) % kLogRingBytes;
+    for (size_t i = 0; i < len; i++) {
+      s_log_ring[s_log_head] = (uint8_t)line[i];
+      s_log_head = (s_log_head + 1) % kLogRingBytes;
+    }
+    s_log_used += 2 + len;
+  }
+  taskEXIT_CRITICAL(&s_log_mux);
+}
+
 bool call_action(const char *service, const Kv *data, size_t n,
-                 const char *response_template, ActionDone done) {
+                 const char *response_template, ActionDone done, void *ctx) {
   if (s_cfg == nullptr || s_actions == nullptr) {
     return false;
   }
@@ -1242,12 +1429,62 @@ bool call_action(const char *service, const Kv *data, size_t n,
     heap_caps_free(buf);
     return false;
   }
-  const QueuedAction qa = {buf, w.size(), id, done};
+  const QueuedAction qa = {buf, w.size(), id, done, ctx};
   if (xQueueSend(s_actions, &qa, 0) != pdTRUE) {
     heap_caps_free(buf);
     return false;
   }
   return true;
+}
+
+namespace {
+struct SyncCall {
+  SemaphoreHandle_t done;
+  char *out;
+  size_t cap;
+  size_t len;
+  bool ok;
+};
+
+void sync_done(void *ctx, bool ok, const char *error, const char *json,
+               size_t len) {
+  auto *sc = static_cast<SyncCall *>(ctx);
+  sc->ok = false;
+  if (!ok) {
+    ESP_LOGW(TAG, "action failed: %s", error != nullptr ? error : "?");
+  } else if (len >= sc->cap) {
+    ESP_LOGE(TAG, "action response %u B > %u B buffer", (unsigned)len,
+             (unsigned)sc->cap);
+  } else {
+    memcpy(sc->out, json, len);
+    sc->out[len] = '\0';
+    sc->len = len;
+    sc->ok = true;
+  }
+  xSemaphoreGive(sc->done);
+}
+} // namespace
+
+bool call_action_sync(const char *service, const Kv *data, size_t n,
+                      const char *response_template, char *out, size_t cap,
+                      size_t *len) {
+  SyncCall sc = {xSemaphoreCreateBinary(), out, cap, 0, false};
+  if (sc.done == nullptr) {
+    return false;
+  }
+  if (!call_action(service, data, n, response_template, sync_done, &sc)) {
+    vSemaphoreDelete(sc.done);
+    return false;
+  }
+  // No timeout here on purpose: call_action guarantees exactly one callback
+  // (answer, refusal, or the server's own 20 s timeout). Giving up earlier
+  // would leave the server writing into this stack frame later.
+  xSemaphoreTake(sc.done, portMAX_DELAY);
+  vSemaphoreDelete(sc.done);
+  if (len != nullptr) {
+    *len = sc.len;
+  }
+  return sc.ok;
 }
 
 } // namespace esphome_api
