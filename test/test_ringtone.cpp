@@ -102,7 +102,7 @@ TEST_F(Ringtone, KeepsRingingJustBeforeTheSafetyCap) {
 }
 
 TEST_F(Ringtone, DisarmsItselfPastTheSafetyCap) {
-  // Sans ce filet, un `start()` dont le `stop()` se perd (MQTT muet, session
+  // Sans ce filet, un `start()` dont le `stop()` se perd (Home Assistant muet, session
   // avortée) ferait sonner l'appareil indéfiniment.
   ringtone::start();
   esp_timer_stub::advance(kMaxRingUs + 1);

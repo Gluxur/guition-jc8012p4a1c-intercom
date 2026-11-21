@@ -1,8 +1,8 @@
 # Getting started
 
 From a bare JC8012P4A1C board to a working intercom. Set up the server first
-([server-setup.md](server-setup.md)): the board is only useful once go2rtc,
-MQTT and Home Assistant answer.
+([server-setup.md](server-setup.md)): the board is only useful once go2rtc
+and Home Assistant answer.
 
 ## 1. Toolchain
 
@@ -81,11 +81,13 @@ Three ways, pick one:
    normally, shows the home screen and keeps retrying Wi-Fi in the background.
    Open the **Configuration** page from the home screen and fill in:
    - Wi-Fi SSID and password,
-   - **Host**: IP of the machine running go2rtc, Home Assistant and MQTT,
-   - MQTT user and password,
-   - Home Assistant long-lived access token.
+   - **Host**: IP of the machine running go2rtc (and Home Assistant, which
+     serves the optional OTA image).
 
-   Save, then reboot: network settings are applied at boot only.
+   Save, then reboot: network settings are applied at boot only. Home
+   Assistant needs nothing on the board: once it is on Wi-Fi, HA discovers it
+   as an ESPHome device and sets up the encryption key itself — see
+   [server-setup.md](server-setup.md#adopt-the-device).
 2. **Compiled defaults**: copy `main/app_secrets.example.h` to
    `main/app_secrets.h` (git-ignored), fill it, build and flash. Values entered
    later on the screen override them.
@@ -100,11 +102,12 @@ Installation constants that are not editable on screen live in
 | `kHaCalendarEntity` | `calendar.home` | HA calendar entity for the agenda |
 | `kTimezone` | `CET-1CEST,M3.5.0,M10.5.0/3` | POSIX TZ string (Europe/Paris) |
 | `kGo2rtcAudioSrc`, `kGo2rtcMicSrc`, `kGo2rtcMjpeg2Src` | `vto_audio_only`, `vto_audio_input_only`, `vto_mjpeg2` | go2rtc stream names |
-| `kGo2rtcPort`, `kHaPort`, `kMqttPort` | 1984, 8123, 1883 | Service ports |
-| `topic::*` | `visiophone/ring`, `visio/...` | MQTT topics |
+| `kGo2rtcPort`, `kHaPort` | 1984, 8123 | Service ports (`kHaPort`: OTA image only) |
 
-Home Assistant is reached over **HTTPS** (`https://<host>:8123`). If your HA
-only serves plain HTTP, change the scheme of `ha_base_url` in
+The ESPHome API listens on TCP **6053**; the device name `visiophone` and the
+entity table are in [`main/app/ha_api.cpp`](../main/app/ha_api.cpp). The
+optional "Update (Wi-Fi)" button fetches `https://<host>:8123/local/fw.bin`; if
+your HA only serves plain HTTP, change the scheme of `s_url_ota` in
 `main/sys/settings.cpp`.
 
 ## 5. microSD card
@@ -122,16 +125,14 @@ Micro/Debug page can also format it). The ringtone file is read at boot.
 
 ## 6. Test a call
 
-```bash
-mosquitto_pub -h <host> -u <user> -P <password> -t visiophone/ring -m ON
-```
+In Home Assistant, press the device's **Sonner** button (or run the action
+`button.press` on `button.visiophone_sonner`). The camera screen opens, the
+ringtone plays and the street side hears a ding-dong. Tap **Répondre**
+(Answer) to talk. Without an answer the call is marked missed after 30 s and a
+snapshot is stored.
 
-The camera screen opens, the ringtone plays and the street side hears a
-ding-dong. Tap **Répondre** (Answer) to talk. Without an answer the call is
-marked missed after 30 s and a snapshot is stored.
-
-To open the camera without ringing (testing at night, measuring):
-`visio/camera/set` = `ON` / `OFF`.
+To open the camera without ringing (testing at night, measuring): the switch
+**Caméra sans sonnerie**.
 
 ## Host unit tests
 

@@ -65,7 +65,19 @@ Same pattern for `gcal` and `bsp/ppa_srm_quirk.cpp`.
 Covered today: G.711 A-law, ringtone mixer, WAV header parsing, Home Assistant
 weather and calendar parsers, call-log line parser, motion detection, Lottie
 pre-multiplied blending, PPA DIG-734 band splitting, OTA image header check,
-file-server path sanitising, HA discovery formatting, saint-of-the-day table.
+file-server path sanitising, saint-of-the-day table, and the ESPHome API wire
+layer: protobuf codec, frame headers, base64, and the Noise_NNpsk0 responder
+checked against the cacophony test vector. The crypto runs on the same
+mbedTLS 4.0.0 release as ESP-IDF 6.0, fetched at configure time (the first
+configure takes about a minute longer).
+
+The Jinja response templates the firmware sends to Home Assistant are checked
+separately, by rendering them like HA does:
+
+```bash
+pip install jinja2
+python test/ha_templates/check_templates.py .
+```
 
 ### Rules of thumb
 

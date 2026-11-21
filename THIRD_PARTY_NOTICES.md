@@ -28,6 +28,12 @@ implementation would remove that constraint.
 Not stored in this repository, downloaded by the ESP-IDF component manager
 (`main/idf_component.yml`, pinned in `dependencies.lock`): LVGL, `esp_peer`
 (Espressif WebRTC), `esp_hosted` / `esp_wifi_remote`, `esp-sr`, `esp_lcd_touch`,
-TinyUSB, cJSON, esp-mqtt. Each one comes with its own license.
+TinyUSB, cJSON, mDNS. Each one comes with its own license.
+
+The ESPHome native API is implemented from its public protocol description
+(`api.proto` in [esphome/esphome](https://github.com/esphome/esphome)); no
+ESPHome source code is included. The Noise test vector in
+`test/test_noise_nnpsk0.cpp` comes from
+[cacophony](https://github.com/haskell-cryptography/cacophony) (public domain).
 
 The host unit tests fetch GoogleTest (BSD-3-Clause) and cJSON (MIT).

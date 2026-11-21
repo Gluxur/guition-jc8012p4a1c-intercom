@@ -113,13 +113,19 @@ pitfalls — most "arbitrary" constants are justified there).
 
 - `main/app_config.h` (namespace `cfg`): compiled defaults (`cfg::defaults::*`,
   filled from the git-ignored `main/app_secrets.h` if present) and deployment
-  constants (ports, go2rtc stream names, HA entities, MQTT topics).
+  constants (ports, go2rtc stream names, HA entities).
   `inline constexpr`, no config `#define` anywhere else.
 - `cfg::defaults::*` is read **only** by `sys/settings.cpp`. Everywhere else:
   `settings::…`. URLs are formatted once in `settings::init()`; modules never
   compose a URL.
 - `settings` (network, NVS `net_cfg`, applied at reboot) and `prefs` (comfort,
   NVS `ui_prefs`, applied live) are two distinct contracts. Do not merge them.
+- **Home Assistant link = ESPHome native API** (`net/esphome_api`, catalogue in
+  `app/ha_api.cpp`). No MQTT, no HA token. HA data (weather, calendar) is read
+  through HA actions with a response template; a template change must keep
+  `test/ha_templates/check_templates.py` green. Keep the announced API version
+  at 1.13 unless the server implements DeviceCapabilitiesRequest (1.15+).
+  Changing an entity's `object_id` creates a new entity in HA.
 - **Never commit secrets.** No Wi-Fi password, token, IP-specific credential
   or camera URL in tracked files.
 - The init order in `app_main` is deliberate; each step has its reason written

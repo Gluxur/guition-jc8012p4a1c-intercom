@@ -10,7 +10,7 @@ labels: bug
 
 **Setup**
 - Board: (JC8012P4A1C / other)
-- Firmware version (`visio/fw/version` or commit):
+- Firmware version ("Version du firmware" sensor in HA, or commit):
 - ESP-IDF version:
 - go2rtc version, door station model:
 

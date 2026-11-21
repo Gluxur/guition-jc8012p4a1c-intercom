@@ -1,25 +1,26 @@
 # Server setup
 
-The board talks to three services, expected on the **same host** (one "Host"
+The board talks to two services, expected on the **same host** (one "Host"
 field in the settings):
 
 | Service | Port | Used for |
 |---|---|---|
 | go2rtc | 1984 (HTTP API), 8555 (WebRTC) | MJPEG video, WebRTC audio in and out |
-| Home Assistant | 8123 (HTTPS) | Weather, calendar (REST API, long-lived token) |
-| MQTT broker | 1883 | Doorbell trigger, HA discovery, OTA, logs |
+| Home Assistant | — (HA connects **to** the board on 6053) | Entities, doorbell, weather, calendar, logs |
+| Home Assistant | 8123 (HTTPS) | Only to serve a firmware image for the "Update (Wi-Fi)" button (optional) |
 
-A typical setup is Home Assistant OS with the **go2rtc add-on (AlexxIT)** and
-the **Mosquitto broker** add-on.
+A typical setup is Home Assistant OS with the **go2rtc add-on (AlexxIT)**.
+No MQTT broker and no access token are needed: the board speaks the
+**ESPHome native API**, so Home Assistant adopts it like any ESPHome device.
 
 ```
  door station ──RTSP──▶ go2rtc ──MJPEG (HTTP)──────────▶ ESP32-P4
    (camera +           │       ──WebRTC audio (G.711)──▶  (speaker)
     backchannel) ◀─────┘       ◀─WebRTC audio (G.711)───  (microphone)
 
- doorbell button ──▶ Home Assistant ──MQTT visiophone/ring──▶ ESP32-P4
-                         ▲  ◀──MQTT discovery / states───────
-                         └──── REST: weather, calendar ◀─────
+ doorbell button ──▶ Home Assistant ──ESPHome API (TCP 6053, encrypted)──▶ ESP32-P4
+                       button press, entities, logs ◀──▶ states, action calls
+                       weather.get_forecasts / calendar.get_events run for the board
 ```
 
 ## go2rtc
@@ -58,60 +59,51 @@ and older. Compare `recv=` in the board's `MJPEG` log line with the `fps=` of
 the stream. Lower the fps or raise `-q:v` (smaller JPEGs). Frame size depends
 on the scene: ~70 KB in daylight, ~20 KB at night in IR.
 
-## MQTT
-
-Create a broker user for the device. The firmware subscribes and publishes
-under `visio/…`, `visiophone/ring` and the HA discovery prefix
-`homeassistant/…`.
-
-Main topics (the full list is in `main/app_config.h` and
-`main/app/ha_entities.cpp`):
-
-| Topic | Direction | Payload |
-|---|---|---|
-| `visiophone/ring` | → device | `ON` starts a call (ringtone + camera screen) |
-| `visio/camera/set` | → device | `ON` / `OFF`: open/close the camera screen without ringing |
-| `visio/status` | ← device | `online` / `offline` (MQTT last will) |
-| `visio/fw/version` | ← device | Firmware version (retained) |
-| `visio/ota/cmd` | → device | Firmware URL (must be on the configured host) |
-| `visio/ota/sd` | → device | Path of a `.bin` on the SD card |
-| `visio/ota/status` | ← device | `start`, `downloading N%`, `verify`, `reboot`, `ready`, `fail: …` |
-| `visio/log/enable` | → device | `1` / `0`: stream logs to `visio/log` (not persisted) |
-| `visio/log` | ← device | Log batches (sliding window: de-duplicate) |
-| `visio/<entity>/set` | → device | Commands of the discovered entities (DND, volumes, page, reboot…) |
-
-Retained messages on action topics (ring, camera, reboot, OTA…) are
-**ignored** on purpose, so a stale retained `ON` does not ring at every boot.
-Publish without `-r`.
-
 ## Home Assistant
 
-### Access token
+### Adopt the device
 
-Profile → Security → **Long-lived access tokens** → create one, paste it on
-the device's Settings page. A dedicated, non-admin HA user is a good idea.
+1. Once the board is on Wi-Fi, it announces itself over mDNS
+   (`_esphomelib._tcp`, name `visiophone`). **Settings → Devices & services**
+   shows a discovered **ESPHome** device "Visiophone": click *Add*. (If
+   discovery does not show up — mDNS blocked between VLANs, for instance — add
+   the ESPHome integration by hand with the board's IP, port 6053.)
+2. Home Assistant generates an encryption key and sends it to the board on
+   that first contact; the board stores it in NVS and from then on only
+   accepts encrypted connections with that key. Nothing to type.
+3. Open the device → **Configure** and tick **"Allow the device to perform
+   Home Assistant actions"**. Without it the weather and calendar pages stay
+   empty: the board asks HA to run `weather.get_forecasts` and
+   `calendar.get_events` on its behalf, and HA silently drops those calls
+   unless the option is on (the board logs a timeout after 20 s).
 
-HA must answer over **HTTPS** on port 8123 (self-signed certificate accepted).
-For plain HTTP, see [getting-started.md](getting-started.md#4-first-configuration).
+> Older Home Assistant releases may connect in plaintext first and then send
+> the key over that connection; the board accepts both. Plaintext is refused
+> as soon as a key is set.
 
-### Discovered device
+### Entities
 
-With MQTT discovery enabled (default), a **Visiophone P4** device appears with
-about thirty entities. Their display names are in French; entity IDs are
-derived from them (check the device page). Among them:
+About thirty entities, display names in French. Entity IDs are derived from
+the device and entity names (e.g. `button.visiophone_sonner`) — check the
+device page for the exact IDs. Among them:
 
+- `button` **Sonner** — the doorbell: ringtone, street-side ding-dong, call log,
+  missed-call snapshot after 30 s.
 - `light` Écran (screen on/off + brightness), `switch` Ne pas déranger (DND),
 - `select` Page affichée (`accueil`, `meteo`, `agenda`, `appels`, `configuration`),
 - `number` ring / speaker volume, mic gain,
-- `switch` Caméra sans sonnerie, `button` reboot, OTA, acknowledge missed calls,
-- `sensor` RSSI, IP, uptime, CPU per core, PSRAM, SD free space, missed calls,
-  firmware version, OTA status,
+- `switch` Caméra sans sonnerie (open the camera without ringing),
+  `switch` SD log, file server, stats overlay,
+- `button` reboot, OTA from SD card, OTA over Wi-Fi, acknowledge missed calls,
+  presence snapshot,
+- `sensor` RSSI, uptime, CPU per core, PSRAM, internal SRAM, SD free space,
+  missed calls; `text_sensor` IP, firmware version, OTA status,
 - `binary_sensor` Appel en cours (in call), Présence devant l'écran (presence).
 
 ### Doorbell automation
 
-Ring the device when your door station's button is pressed. The trigger depends
-on your door station integration; for example with a Dahua VTO event:
+Press the **Sonner** button when your door station's button is pressed. The
+trigger depends on your door station integration; for example:
 
 ```yaml
 automation:
@@ -121,10 +113,9 @@ automation:
         entity_id: binary_sensor.door_station_button   # your doorbell entity
         to: "on"
     action:
-      - service: mqtt.publish
-        data:
-          topic: visiophone/ring
-          payload: "ON"
+      - action: button.press
+        target:
+          entity_id: button.visiophone_sonner           # check the real ID
 ```
 
 ### Screen off when nobody is around
@@ -137,12 +128,12 @@ automation:
   - alias: "Indoor screen follows presence"
     trigger:
       - platform: state
-        entity_id: binary_sensor.visiophone_p4_presence_devant_l_ecran  # check the real ID
+        entity_id: binary_sensor.visiophone_presence_devant_l_ecran  # check the real ID
         for: "00:02:00"
     action:
-      - service: "light.turn_{{ 'on' if trigger.to_state.state == 'on' else 'off' }}"
+      - action: "light.turn_{{ 'on' if trigger.to_state.state == 'on' else 'off' }}"
         target:
-          entity_id: light.visiophone_p4_ecran
+          entity_id: light.visiophone_ecran
 ```
 
 During a call presence is forced to "present", so the screen never goes dark
@@ -155,8 +146,29 @@ while someone rings.
 - Calendar: any `calendar.*` entity (Google Calendar, CalDAV, local…). Set its
   ID in `cfg::kHaCalendarEntity`.
 
+Both are fetched as **HA actions with a response**, through the API
+connection. The board sends a small Jinja *response template* with each call
+so that HA returns only what the screen shows (7 days of forecast plus the
+current conditions, or the list of events). Both templates are checked in CI
+by [`test/ha_templates/check_templates.py`](../test/ha_templates/check_templates.py).
+
+### Logs
+
+Enable *Settings → ESPHome → (device) → Configure → "Subscribe to logs"* to
+copy the board's logs into the Home Assistant log, or read them from any PC
+with [aioesphomeapi](https://github.com/esphome/aioesphomeapi):
+
+```bash
+pip install aioesphomeapi
+aioesphomeapi-logs <board-ip> --noise-psk <key from HA>
+```
+
+The key is the `noise_psk` of the ESPHome entry in Home Assistant's
+`/config/.storage/core.config_entries` (diagnostics downloads redact it).
+Treat it like a password.
+
 ### Firmware served by Home Assistant (optional)
 
-The "Update (Wi-Fi)" button proposes `https://<host>:8123/local/fw.bin`: copy
-`build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA. Other ways to
-update are in [maintenance.md](maintenance.md).
+The "Mettre à jour (Wi-Fi)" button downloads `https://<host>:8123/local/fw.bin`:
+copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA. Other ways
+to update are in [maintenance.md](maintenance.md).

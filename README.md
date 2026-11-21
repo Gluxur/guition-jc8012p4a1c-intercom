@@ -7,7 +7,9 @@ back. The rest of the time it is a weather / calendar wall display.
 
 Video and audio come from **[go2rtc](https://github.com/AlexxIT/go2rtc)**;
 doorbell trigger, weather, calendar and supervision come from **Home
-Assistant** (MQTT + REST API). Everything stays on your LAN, no cloud.
+Assistant**, which adopts the board as an **ESPHome device** (the firmware
+implements the ESPHome native API itself: no broker, no access token, the
+encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
 
 - **Target**: ESP32-P4 (dual-core RISC-V @ 360 MHz, 32 MB PSRAM). The P4 has no
   radio: Wi-Fi goes through the on-board ESP32-C6 (`esp_hosted` over SDIO).
@@ -24,7 +26,7 @@ Assistant** (MQTT + REST API). Everything stays on your LAN, no cloud.
 ## Features
 
 **Calls**
-- MQTT doorbell trigger → camera screen opens + ringtone.
+- Doorbell from Home Assistant (a "Sonner" button) → camera screen opens + ringtone.
 - Full-screen MJPEG video at 15-25 fps, decoded by the P4's **hardware JPEG
   engine** straight into the display framebuffer (zero copy).
 - Incoming audio over WebRTC (G.711 A-law); **Answer** opens a second WebRTC
@@ -50,17 +52,20 @@ Assistant** (MQTT + REST API). Everything stays on your LAN, no cloud.
   around.
 
 **Operations**
-- On-screen **Settings** page (Wi-Fi, server host, MQTT, HA token, brightness,
-  ringtone, do-not-disturb, echo cancellation…), stored in NVS.
-- **Home Assistant MQTT discovery**: ~30 entities (screen light, DND, volumes,
-  page selector, reboot, OTA, RSSI, CPU, PSRAM, missed calls, presence, logs…).
+- On-screen **Settings** page (Wi-Fi, server host, brightness, ringtone,
+  do-not-disturb, echo cancellation…), stored in NVS.
+- **ESPHome native API**: discovered over mDNS, encrypted (Noise), ~30
+  entities (screen light, DND, volumes, page selector, doorbell, reboot, OTA,
+  RSSI, CPU, PSRAM, missed calls, presence…). Weather and calendar are HA
+  actions run on the board's behalf.
 - **OTA** from Home Assistant, from the microSD card, or over the built-in
   file server, with automatic rollback if the new image cannot reach the
   network.
-- **microSD log** (dated files, 14-day retention), **live logs over MQTT**.
+- **microSD log** (dated files, 14-day retention), **live logs** through the
+  API (HA log or `aioesphomeapi-logs`).
 - **USB mass-storage mode**: expose the SD card to a PC over the OTG port.
-- **Connectivity watchdog**: reboot if Wi-Fi is down 5 min or MQTT 30 min,
-  never during a call, an OTA or USB mode.
+- **Connectivity watchdog**: reboot if Wi-Fi is down 5 min or Home Assistant
+  absent 30 min, never during a call, an OTA or USB mode.
 - Custom ringtones: any 8 kHz mono WAV at the root of the SD card.
 
 ## Hardware
@@ -75,14 +80,14 @@ Assistant** (MQTT + REST API). Everything stays on your LAN, no cloud.
 | Storage | microSD (shares the P4's single SDMMC controller with the Wi-Fi link) |
 | Door station | Any RTSP camera go2rtc can read; two-way audio needs an ONVIF/RTSP backchannel (developed against a Dahua VTO) |
 
-Server side: **go2rtc ≥ 1.9.15** (the Home Assistant add-on works well),
-**Home Assistant** reachable over HTTPS on port 8123, an **MQTT broker**
-(e.g. Mosquitto add-on). The firmware assumes all three run on the same host.
+Server side: **go2rtc ≥ 1.9.15** (the Home Assistant add-on works well) and
+**Home Assistant** with its ESPHome integration (a recent release: action
+responses arrived in 2025.10). The firmware assumes both run on the same
+host.
 
 ## Quick start
 
-1. **Server**: set up go2rtc from [`go2rtc.example.yaml`](go2rtc.example.yaml),
-   an MQTT user, and a Home Assistant long-lived token →
+1. **Server**: set up go2rtc from [`go2rtc.example.yaml`](go2rtc.example.yaml) →
    [docs/server-setup.md](docs/server-setup.md).
 2. **Build and flash** with ESP-IDF v6.0.1 →
    [docs/getting-started.md](docs/getting-started.md).
@@ -91,11 +96,13 @@ Server side: **go2rtc ≥ 1.9.15** (the Home Assistant add-on works well),
    idf.py -p <PORT> flash monitor
    ```
    ⚠️ Never run `idf.py set-target`: it resets the hand-tuned `sdkconfig`.
-3. **Configure** on the touch screen (Settings page: Wi-Fi, host, MQTT, HA
-   token), then reboot. Or pre-fill `main/app_secrets.h` from
+3. **Configure** on the touch screen (Settings page: Wi-Fi and host), then
+   reboot. Or pre-fill `main/app_secrets.h` from
    [`main/app_secrets.example.h`](main/app_secrets.example.h) — it is
    git-ignored.
-4. **Ring**: publish `ON` to `visiophone/ring` (or wire your doorbell in an HA
+4. **Adopt** the discovered "Visiophone" ESPHome device in Home Assistant and
+   tick "Allow the device to perform Home Assistant actions".
+5. **Ring**: press its **Sonner** button (or wire your doorbell in an HA
    automation, see the server guide).
 
 ## Documentation
@@ -103,7 +110,7 @@ Server side: **go2rtc ≥ 1.9.15** (the Home Assistant add-on works well),
 | Document | Content |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Toolchain, build, flash, first configuration, SD card |
-| [docs/server-setup.md](docs/server-setup.md) | go2rtc, Home Assistant, MQTT topics and automations |
+| [docs/server-setup.md](docs/server-setup.md) | go2rtc, adopting the device in Home Assistant, entities and automations |
 | [docs/architecture.md](docs/architecture.md) | Code layout, tasks and cores, video / audio pipelines |
 | [docs/hardware-notes.md](docs/hardware-notes.md) | **ESP32-P4 pitfalls measured on this board** — read before touching sdkconfig or the BSP |
 | [docs/maintenance.md](docs/maintenance.md) | OTA, remote logs, file server, USB mode, diagnostics |
@@ -129,8 +136,9 @@ All of them, with measurements: [docs/hardware-notes.md](docs/hardware-notes.md)
 ## Security
 
 This is a LAN appliance. Read [SECURITY.md](SECURITY.md) before exposing
-anything: MQTT is plain TCP, the Home Assistant certificate is not verified,
-and the optional file server has no authentication (off by default).
+anything: the API accepts the first client until Home Assistant provisions its
+key, the OTA download does not verify the HA certificate, and the optional
+file server has no authentication (off by default).
 
 ## License
 

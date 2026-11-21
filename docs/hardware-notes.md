@@ -162,8 +162,9 @@ Three conditions, each silent when missing:
 - **`CONFIG_MBEDTLS_X509_CREATE_C=y` is mandatory**: mbedTLS 4 gates X.509
   writing behind it (default `n`); without it `esp_peer`'s DTLS-SRTP does not
   compile → no audio, no microphone.
-- `json` and `mqtt` left ESP-IDF: they come from the registry
-  (`espressif/cjson`, `espressif/mqtt`); cJSON registers as `espressif__cjson`.
+- `json` left ESP-IDF: it comes from the registry (`espressif/cjson`) and
+  registers as `espressif__cjson`. (`mqtt` left too; this firmware no longer
+  uses it.)
 - `libpeer_default.a` references an `esp_log` symbol that IDF 6 now defines
   itself. Do **not** add a stub (conflicting declaration).
 - **picolibc**: `__bufio_put` writes one byte past a `FILE` buffer. The victim

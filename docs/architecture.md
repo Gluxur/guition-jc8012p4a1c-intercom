@@ -15,20 +15,23 @@ main/
     mic_session       outgoing microphone peer (backchannel), street-side ding-dong
     audio_pipeline    PCM slots, render task, I2S DMA purge, ringtone mixing
     video_mjpeg       hardware JPEG engine, zero-copy mailbox, render task, snapshots
-    call_history      one call = one MQTT ring; journal, missed-call snapshots, 30 s timeout
+    call_history      one call = one ring ("Sonner" button); journal, missed-call snapshots, 30 s timeout
     presence          front-camera motion detection, published to HA
-    ha_entities       MQTT discovery catalogue and command handlers
-    *_parse, motion_detect, ephemeris, ha_discovery_fmt   pure logic, host-tested
+    ha_api            Home Assistant entity catalogue (ESPHome API) and command handlers
+    *_parse, motion_detect, ephemeris   pure logic, host-tested
   ui/               LVGL screens, one file per screen
     ui                home screen, ui::Callbacks (the only bridge to app/)
     ui_camera_v2      full-panel camera screen + 80 px control band
     ui_weather_v3     weather page (pre-rendered Lottie icons), ui_agenda, ui_calls,
     ui_call_viewer, ui_settings, ui_mic (debug), ui_sdlog, ui_usb, ui_stats
   net/              wifi_net, signaling (go2rtc SDP exchange), mjpeg_client,
-                    weather / gcal (+ *_parse), file_server
+                    weather / gcal (+ *_parse), file_server,
+                    esphome_api (ESPHome native API server + mDNS),
+                    esphome_pb / esphome_frame / noise_nnpsk0 (its wire format and
+                    encryption, host-tested)
   media/            aec (esp-sr), g711, ringtone (passive mixer), ringtone_sd, wav_parse
   sys/              settings (network config, NVS, applied at boot), prefs (comfort
-                    settings, applied live), dbg_log, sd_log, log_stream, mqtt_ctrl,
+                    settings, applied live), dbg_log, sd_log,
                     ota_ctrl, net_wdt, usb_msc, sys_stats, mutex.h
 components/
   bsp/              bsp::Bsp singleton: display, touch, LVGL, PPA, audio codec,
@@ -46,7 +49,7 @@ link from screens to application logic, which keeps the module graph acyclic.
 
 | | `settings::` | `prefs::` |
 |---|---|---|
-| Content | Wi-Fi, host, MQTT, HA token | DND, volumes, ringtone, brightness, SD log, echo cancellation… |
+| Content | Wi-Fi, host | DND, volumes, ringtone, brightness, SD log, echo cancellation… |
 | NVS namespace | `net_cfg` | `ui_prefs` |
 | Applied | **At reboot** (URLs are formatted once in `settings::init()`) | **Live** |
 | Fallback | `cfg::defaults::*` ← optional `main/app_secrets.h` | Compiled defaults |
@@ -117,9 +120,41 @@ Don't move these affinities without measuring throughput: pinning lwIP's
 NVS → debug log ring → SD log ring → `settings` → `prefs` → **BSP** (owns the
 SDMMC controller) → SD log → call history → ringtone from SD (*before* the
 audio pipeline, its only reader) → G.711 → audio pipeline → **JPEG engine**
-(needs internal DMA RAM early) → sessions → LVGL task → Wi-Fi → OTA / log
-stream (*before* MQTT, which may deliver a retained message within
-milliseconds) → MQTT → OTA validation → connectivity watchdog **last**.
+(needs internal DMA RAM early) → sessions → LVGL task → Wi-Fi → OTA (*before*
+the API: HA may press an OTA button as soon as it connects) → API log sink →
+**ESPHome API** (mDNS + server) → presence → OTA validation (once HA is
+connected) → connectivity watchdog **last**.
+
+## Home Assistant link (ESPHome native API)
+
+The board implements the server side of the
+[ESPHome native API](https://esphome.io/components/api/) itself — it does not
+run ESPHome, which pins its own ESP-IDF release.
+
+```
+ HA ──TCP 6053──▶ esphome_api task (core 0, prio 3, 12 KB stack in PSRAM)
+                   │ frames: plaintext (0x00) until a key is set, then only
+                   │ Noise_NNpsk0_25519_ChaChaPoly_SHA256 (0x01)
+                   ├─ ListEntities / states / commands  ◀──▶ app/ha_api table
+                   ├─ SubscribeLogs  ◀── dbg_log sink (ring, any task)
+                   └─ HomeassistantActionRequest ──▶ HA runs weather.get_forecasts /
+                      calendar.get_events, answers with the (templated) response;
+                      net/weather and net/gcal wait for it in their fetch tasks
+```
+
+- **Key provisioning**: an unprovisioned board accepts the all-zero Noise PSK
+  (and plaintext). HA generates a key and sends it with
+  `NoiseEncryptionSetKeyRequest`; the board stores it in NVS (`esphome_api`
+  namespace), advertises `api_encryption` in mDNS and from then on rejects
+  anything else.
+- **Crypto** comes from PSA Crypto (mbedTLS 4, shipped with ESP-IDF 6);
+  `CONFIG_MBEDTLS_CHACHAPOLY_C` is enabled for it. The Noise responder is
+  checked on the host against the official test vector.
+- **State pushes**: a 64-bit dirty mask (`esphome_api::publish`) from any task,
+  drained by the server task within ~100 ms; plus a 30 s refresh, skipped
+  during a call except for entities marked `refresh_when_busy`.
+- The API version announced is 1.13 on purpose: from 1.15 clients send a
+  capabilities request this server does not implement.
 
 ## Display
 
