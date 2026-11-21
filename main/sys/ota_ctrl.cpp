@@ -4,7 +4,9 @@
 #include <memory>
 #include <string.h>
 #include <sys/stat.h>
+#include <type_traits>
 
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
@@ -27,6 +29,20 @@ constexpr const char *TAG = "ota_ctrl";
 
 bool (*s_is_busy)() = nullptr;
 void (*s_report)(const char *) = nullptr;
+void (*s_changed)() = nullptr;
+
+// Vérification de version : faite par la tâche `ota` elle-même, jamais en
+// parallèle d'un téléchargement — deux sessions TLS simultanées doubleraient
+// la SRAM interne réclamée par mbedTLS.
+std::atomic<const char *> s_check_url{nullptr};
+std::atomic<bool> s_check_pending{false};
+// En secondes × configTICK_RATE_HZ, pas pdMS_TO_TICKS : ce dernier multiplie
+// en TickType_t 32 bits, et 21,6 M ms × 1000 Hz déborde.
+constexpr TickType_t kCheckPeriod = (TickType_t)(6 * 3600) * configTICK_RATE_HZ;
+// Sous s_status_mtx, comme le statut : c'est le même lecteur (tâche API).
+ImageInfo s_latest = {};
+bool s_latest_known = false;
+std::atomic<int> s_progress{-1};
 
 char s_url[256] = {0};
 SemaphoreHandle_t s_req_sem = nullptr; // réveille la tâche OTA
@@ -77,6 +93,97 @@ void report(const char *msg) {
     s_report(msg);
 }
 
+void notify_changed() {
+  if (s_changed != nullptr) {
+    s_changed();
+  }
+}
+
+void store_latest(const ImageInfo &info) {
+  if (s_status_mtx == nullptr) {
+    s_latest = info;
+    s_latest_known = true;
+    return;
+  }
+  sys::MutexLock lock(s_status_mtx);
+  s_latest = info;
+  s_latest_known = true;
+}
+
+struct HttpCloser {
+  void operator()(esp_http_client_handle_t c) const {
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
+  }
+};
+
+// Lit les 144 premiers octets de l'image publiée (en-tête + esp_app_desc_t).
+// Même TLS sans certificat que do_ota(), pour la même raison. Un serveur qui
+// ignore Range renvoie 200 et toute l'image : on ferme après l'en-tête.
+// Renvoie false sur erreur réseau (on garde alors le dernier résultat connu).
+bool do_check(const char *url) {
+  esp_http_client_config_t http = {};
+  http.url = url;
+  http.timeout_ms = 10000;
+  std::unique_ptr<std::remove_pointer_t<esp_http_client_handle_t>, HttpCloser>
+      client(esp_http_client_init(&http));
+  if (!client) {
+    return false;
+  }
+  char range[32];
+  snprintf(range, sizeof range, "bytes=0-%u",
+           (unsigned)(ota_image::kHeaderProbeBytes - 1));
+  esp_http_client_set_header(client.get(), "Range", range);
+  if (esp_http_client_open(client.get(), 0) != ESP_OK) {
+    ESP_LOGW(TAG, "check: connexion impossible");
+    return false;
+  }
+  esp_http_client_fetch_headers(client.get());
+  const int code = esp_http_client_get_status_code(client.get());
+  ImageInfo out = {};
+  if (code == 404) {
+    ESP_LOGI(TAG, "check: aucune image publiée");
+    store_latest(out);
+    return true;
+  }
+  if (code != 200 && code != 206) {
+    ESP_LOGW(TAG, "check: HTTP %d", code);
+    return false;
+  }
+  uint8_t head[ota_image::kHeaderProbeBytes];
+  size_t got = 0;
+  while (got < sizeof head) {
+    const int n = esp_http_client_read(client.get(), (char *)head + got,
+                                       (int)(sizeof head - got));
+    if (n <= 0) {
+      break;
+    }
+    got += (size_t)n;
+  }
+  ota_image::Info info = {};
+  if (got != sizeof head || !ota_image::parse_header(head, got, &info)) {
+    ESP_LOGW(TAG, "check: l'image publiée n'est pas un firmware");
+    store_latest(out);
+    return true;
+  }
+  // Une image d'un autre projet ne doit jamais être proposée à l'installation :
+  // esp_https_ota ne compare pas les noms de projet.
+  const esp_app_desc_t *self = esp_app_get_description();
+  if (self != nullptr && strcmp(info.project, self->project_name) != 0) {
+    ESP_LOGW(TAG, "check: image d'un autre projet (%s), ignorée", info.project);
+    store_latest(out);
+    return true;
+  }
+  snprintf(out.version, sizeof out.version, "%s", info.version);
+  snprintf(out.project, sizeof out.project, "%s", info.project);
+  snprintf(out.date, sizeof out.date, "%s", info.date);
+  const int64_t total = esp_http_client_get_content_length(client.get());
+  out.size_bytes = (code == 200 && total > 0) ? (uint32_t)total : 0;
+  ESP_LOGI(TAG, "check: image publiée %s (%s)", out.version, out.date);
+  store_latest(out);
+  return true;
+}
+
 // Boucle OTA à handle : permet de reporter la progression. L'URL est en https
 // (HA ne sert que du TLS sur son port) mais aucun certificat n'est configuré :
 // c'est CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY qui rend la connexion possible.
@@ -108,6 +215,7 @@ esp_err_t do_ota(const char *url) {
     int read = esp_https_ota_get_image_len_read(handle);
     if (total > 0) {
       int pct = (int)((int64_t)read * 100 / total);
+      s_progress.store(pct);
       if (pct != last_pct && pct % 5 == 0) { // pas de spam : tous les 5%
         char buf[48];
         snprintf(buf, sizeof(buf), "downloading %d%%", pct);
@@ -212,6 +320,7 @@ esp_err_t do_ota_file(const char *path) {
     }
     written += (long)n;
     const int pct = (int)((int64_t)written * 100 / st.st_size);
+    s_progress.store(pct);
     if (pct != last_pct && pct % 5 == 0) { // pas de spam : tous les 5 %
       char msg[48];
       snprintf(msg, sizeof(msg), "downloading %d%%", pct);
@@ -245,10 +354,25 @@ esp_err_t do_ota_file(const char *path) {
 void ota_task(void *arg) {
   (void)arg;
   for (;;) {
-    xSemaphoreTake(s_req_sem, portMAX_DELAY);
+    // Le délai d'attente EST la vérification périodique : pas de timer de plus.
+    if (xSemaphoreTake(s_req_sem, kCheckPeriod) != pdTRUE &&
+        s_check_url.load() != nullptr) {
+      s_check_pending.store(true);
+    }
+    if (s_check_pending.exchange(false)) {
+      const char *url = s_check_url.load();
+      if (url != nullptr && !(s_is_busy && s_is_busy()) && do_check(url)) {
+        notify_changed();
+      }
+    }
+    // s_in_progress armé = une requête attend : seule cette tâche le retombe.
+    if (!s_in_progress.load()) {
+      continue;
+    }
     if (s_is_busy && s_is_busy()) {
       report("busy");
       s_in_progress.store(false);
+      notify_changed();
       continue;
     }
     report("start");
@@ -260,15 +384,20 @@ void ota_task(void *arg) {
       sd_log::flush_now();
       esp_restart();
     }
+    s_progress.store(-1);
     s_in_progress.store(false);
+    // Après le store : un abonné qui relit in_progress() doit voir false.
+    notify_changed();
   }
 }
 
 } // namespace
 
-void init(bool (*is_busy)(), void (*report_fn)(const char *msg)) {
+void init(bool (*is_busy)(), void (*report_fn)(const char *msg),
+          void (*changed)()) {
   s_is_busy = is_busy;
   s_report = report_fn;
+  s_changed = changed;
   // Avant la tâche : elle publie un statut dès son premier réveil.
   s_status_mtx = xSemaphoreCreateMutex();
   if (s_status_mtx == nullptr) {
@@ -377,5 +506,29 @@ bool probe_file(const char *path, ImageInfo *out) {
 }
 
 bool in_progress() { return s_in_progress.load(); }
+
+int progress() { return s_in_progress.load() ? s_progress.load() : -1; }
+
+void request_check(const char *url) {
+  if (url == nullptr || url[0] == '\0' || s_req_sem == nullptr) {
+    return;
+  }
+  s_check_url.store(url);
+  s_check_pending.store(true);
+  xSemaphoreGive(s_req_sem);
+}
+
+bool latest(ImageInfo *out) {
+  if (out == nullptr) {
+    return false;
+  }
+  if (s_status_mtx == nullptr) {
+    *out = s_latest;
+    return s_latest_known;
+  }
+  sys::MutexLock lock(s_status_mtx);
+  *out = s_latest;
+  return s_latest_known;
+}
 
 } // namespace ota_ctrl

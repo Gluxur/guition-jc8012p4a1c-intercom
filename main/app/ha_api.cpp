@@ -222,7 +222,35 @@ void p_ota_sd() { ota_ctrl::request_file(cfg::kOtaSdDefaultPath); }
 
 // The image Home Assistant serves from /config/www/fw.bin. Only the
 // configured host can serve firmware: the URL is built here, never received.
-void p_ota_url() { ota_ctrl::request(settings::ota_firmware_url()); }
+// Firmware update entity. The image HA offers is whatever sits in
+// /config/www/fw.bin: its version is read from the image header (a 144-byte
+// Range request), no manifest to keep in sync with the binary.
+void g_update(esphome_api::UpdateState *u) {
+  const esp_app_desc_t *d = esp_app_get_description();
+  snprintf(u->current, sizeof u->current, "%s", d ? d->version : "unknown");
+  snprintf(u->title, sizeof u->title, "Visiophone firmware");
+  u->in_progress = ota_ctrl::in_progress();
+  const int pct = ota_ctrl::progress();
+  u->progress = pct >= 0 ? (float)pct : -1.0f;
+  ota_ctrl::ImageInfo img = {};
+  if (ota_ctrl::latest(&img) && img.version[0] != '\0') {
+    snprintf(u->latest, sizeof u->latest, "%s", img.version);
+    snprintf(u->summary, sizeof u->summary, "/local/fw.bin: %s, built %s",
+             img.version, img.date);
+  }
+}
+
+void c_update(bool install) {
+  if (install) {
+    ota_ctrl::request(settings::ota_firmware_url());
+  } else {
+    ota_ctrl::request_check(settings::ota_firmware_url());
+  }
+}
+
+// Each (re)connection of HA: look for a newer image right away; ota_ctrl then
+// re-checks every 6 h on its own.
+void on_ha_ready() { ota_ctrl::request_check(settings::ota_firmware_url()); }
 
 // --- Sensors -------------------------------------------------------------------
 
@@ -390,12 +418,6 @@ const Entity kEntities[] = {
      .category = Category::kConfig,
      .press = p_ota_sd},
     {.kind = Kind::kButton,
-     .object_id = "ota_update",
-     .name = "Mettre a jour (Wi-Fi)",
-     .device_class = "update",
-     .category = Category::kConfig,
-     .press = p_ota_url},
-    {.kind = Kind::kButton,
      .object_id = "presence_snapshot",
      .name = "Cliche camera de presence (SD)",
      .icon = "mdi:camera",
@@ -466,6 +488,16 @@ const Entity kEntities[] = {
      .name = "Version du firmware",
      .category = Category::kDiagnostic,
      .get_text = g_fw},
+    // Pushed by ota_ctrl (changed sink in main.cpp) at each progress step and
+    // after each check.
+    {.kind = Kind::kUpdate,
+     .object_id = "firmware",
+     .name = "Firmware",
+     .device_class = "firmware",
+     .category = Category::kConfig,
+     .get_update = g_update,
+     .update_cmd = c_update,
+     .refresh_when_busy = true},
     // Pushed live by ota_ctrl (report sink in main.cpp) for the progress, AND
     // read here: without a getter the entity stayed on "reboot", the last
     // message before esp_restart(), that nothing replaced at the next boot.
@@ -514,6 +546,7 @@ void init(const Hooks &hooks) {
   s_cfg.entities = kEntities;
   s_cfg.entity_count = sizeof(kEntities) / sizeof(kEntities[0]);
   s_cfg.busy = busy;
+  s_cfg.on_ha_ready = on_ha_ready;
   if (!esphome_api::start(s_cfg)) {
     ESP_LOGE(TAG, "ESPHome API not started: Home Assistant cannot reach the board");
   }

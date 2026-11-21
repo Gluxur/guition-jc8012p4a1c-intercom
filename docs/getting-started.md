@@ -106,7 +106,7 @@ Installation constants that are not editable on screen live in
 
 The ESPHome API listens on TCP **6053**; the device name `visiophone` and the
 entity table are in [`main/app/ha_api.cpp`](../main/app/ha_api.cpp). The
-optional "Update (Wi-Fi)" button fetches `https://<host>:8123/local/fw.bin`; if
+firmware update entity fetches `https://<host>:8123/local/fw.bin`; if
 your HA only serves plain HTTP, change the scheme of `s_url_ota` in
 `main/sys/settings.cpp`.
 

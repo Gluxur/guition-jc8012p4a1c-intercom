@@ -7,7 +7,7 @@ field in the settings):
 |---|---|---|
 | go2rtc | 1984 (HTTP API), 8555 (WebRTC) | MJPEG video, WebRTC audio in and out |
 | Home Assistant | — (HA connects **to** the board on 6053) | Entities, doorbell, weather, calendar, logs |
-| Home Assistant | 8123 (HTTPS) | Only to serve a firmware image for the "Update (Wi-Fi)" button (optional) |
+| Home Assistant | 8123 (HTTPS) | Only to serve a firmware image to the firmware update entity (optional) |
 
 A typical setup is Home Assistant OS with the **go2rtc add-on (AlexxIT)**.
 No MQTT broker and no access token are needed: the board speaks the
@@ -94,7 +94,8 @@ device page for the exact IDs. Among them:
 - `number` ring / speaker volume, mic gain,
 - `switch` Caméra sans sonnerie (open the camera without ringing),
   `switch` SD log, file server, stats overlay,
-- `button` reboot, OTA from SD card, OTA over Wi-Fi, acknowledge missed calls,
+- `update` Firmware (Settings → Updates, image served by HA),
+- `button` reboot, OTA from SD card, acknowledge missed calls,
   presence snapshot,
 - `sensor` RSSI, uptime, CPU per core, PSRAM, internal SRAM, SD free space,
   missed calls; `text_sensor` IP, firmware version, OTA status,
@@ -169,6 +170,7 @@ Treat it like a password.
 
 ### Firmware served by Home Assistant (optional)
 
-The "Mettre à jour (Wi-Fi)" button downloads `https://<host>:8123/local/fw.bin`:
-copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA. Other ways
-to update are in [maintenance.md](maintenance.md).
+Copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA: the
+"Firmware" update entity reads its version and offers it in *Settings →
+Updates*; Install downloads `https://<host>:8123/local/fw.bin`. Details and the
+other ways to update are in [maintenance.md](maintenance.md#from-home-assistant-update-entity).

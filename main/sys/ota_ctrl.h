@@ -8,8 +8,12 @@ namespace ota_ctrl {
 // is_busy : renvoie true si une session vidéo/micro est active -> OTA refusé
 //           (SRAM interne + bande passante SDIO partagée).
 // report  : sink de statut ; main le câble sur l'entité « Statut OTA ».
+// changed : appelée APRÈS chaque changement de in_progress() ou de
+//           latest() (fin d'OTA, fin de vérification) ; main le câble sur
+//           l'entité update. Peut être nullptr.
 // Crée une tâche dédiée qui attend une requête. À appeler une fois au boot.
-void init(bool (*is_busy)(), void (*report)(const char *msg));
+void init(bool (*is_busy)(), void (*report)(const char *msg),
+          void (*changed)() = nullptr);
 
 // Demande un OTA depuis `url`. Non bloquant : copie l'url + réveille la tâche.
 // Sûr depuis la tâche de l'API. Ignore si un OTA est déjà en cours.
@@ -19,6 +23,13 @@ void request(const char *url);
 // request() : non bloquant (copie le chemin + réveille la tâche), sûr depuis
 // n'importe quel contexte, ignoré si un OTA est déjà en cours.
 void request_file(const char *path);
+
+// Demande à la tâche OTA de lire l'en-tête de l'image publiée à `url` (une
+// requête Range de 144 octets, pas le téléchargement) pour en connaître la
+// version. `url` doit vivre jusqu'à la fin du programme (les URLs de
+// settings::). Non bloquant ; refait ensuite seul toutes les 6 h. Sauté
+// pendant un appel : un handshake TLS réclame de la SRAM interne.
+void request_check(const char *url);
 
 // Métadonnées lues dans l'en-tête d'un .bin, pour que l'interface affiche ce
 // qu'elle s'apprête à flasher.
@@ -45,5 +56,14 @@ void status(char *out, size_t cap);
 // (succès ou échec). Sonde pure. sys/net_wdt s'en sert pour ne jamais
 // redémarrer pendant l'écriture d'une partition.
 [[nodiscard]] bool in_progress();
+
+// Progression de l'OTA en cours, 0..100 ; -1 hors OTA ou taille inconnue.
+[[nodiscard]] int progress();
+
+// Résultat de la dernière vérification. false tant qu'aucune n'a abouti ;
+// true avec out->version vide quand le serveur n'a pas d'image (404) ou que
+// l'image publiée est celle d'un autre projet. Sûr depuis n'importe quelle
+// tâche (copie sous verrou).
+[[nodiscard]] bool latest(ImageInfo *out);
 
 } // namespace ota_ctrl

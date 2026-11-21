@@ -49,11 +49,33 @@ curl -X POST "http://<ip>/api/rm?path=/sdcard/fw_new.bin"
 `http://<ip>/` also serves a small web page to browse, download and upload SD
 files. The server has **no authentication**: keep it off outside maintenance.
 
-### From Home Assistant
+### From Home Assistant (update entity)
 
-Copy the image to `/config/www/fw.bin` and press **Mettre à jour (Wi-Fi)**.
-The board downloads `https://<host>:8123/local/fw.bin`; the URL is built from
-the configured host, never received from the network.
+The board exposes a regular Home Assistant **update** entity, "Visiophone
+Firmware", so new firmware shows up in *Settings → Updates* like any other
+device:
+
+1. Copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA (Samba,
+   File editor, `scp`…).
+2. Wait, or ask for a check right away: *Developer tools → Actions →*
+   `homeassistant.update_entity` on `update.visiophone_firmware`.
+3. *Settings → Updates → Visiophone → Install*. The progress bar follows the
+   download; the board reboots and the entity goes back to "up to date".
+
+How the board knows about the new image: it reads only the first 144 bytes of
+`https://<host>:8123/local/fw.bin` (HTTP Range request) and takes the version
+from the image header. No manifest to keep in sync. It checks each time HA
+connects to it, every 6 h, and on `homeassistant.update_entity`; never during
+a call. An image whose project name is not this firmware's is ignored.
+
+HA offers the update whenever the published version **differs** from the
+running one (git hashes cannot be ordered), so an older `fw.bin` is offered
+too: delete `/config/www/fw.bin` once installed if that bothers you. The URL
+is built from the configured host, never received from the network.
+
+There is no ESPHome dashboard "Install": the dashboard compiles a YAML with
+its own ESP-IDF, which cannot produce this firmware, and the ESPHome OTA
+protocol (port 3232) is not implemented.
 
 ## Logs
 

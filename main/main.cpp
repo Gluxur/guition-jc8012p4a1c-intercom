@@ -246,7 +246,10 @@ static bool net_wdt_freeze_cb(void) {
 static void ota_report_cb(const char *msg) {
   (void)msg;
   ha_api::publish_now("ota_status");
+  ha_api::publish_now("firmware"); // progress bar of the update entity
 }
+
+static void ota_changed_cb() { ha_api::publish_now("firmware"); }
 
 // Marque l'image en cours "valide" (annule le rollback) UNIQUEMENT si elle est
 // en attente de vérification (premier boot post-OTA) ET que la connectivité est
@@ -400,7 +403,7 @@ extern "C" void app_main(void) {
   // AVANT ha_api::init : Home Assistant peut appuyer sur un bouton OTA dès sa
   // connexion. Initialisé après, ota_ctrl::request() tombait sur
   // s_req_sem == nullptr et la commande OTA était jetée sans trace.
-  ota_ctrl::init(ota_is_busy, ota_report_cb);
+  ota_ctrl::init(ota_is_busy, ota_report_cb, ota_changed_cb);
 
   // Logs live vers les clients de l'API abonnés (option « logs » de HA,
   // aioesphomeapi-logs). Le sink ne copie que si quelqu'un écoute.

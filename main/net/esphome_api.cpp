@@ -90,6 +90,9 @@ enum Msg : uint16_t {
   kSelectCommand = 54,
   kListButton = 61,
   kButtonCommand = 62,
+  kListUpdate = 116,
+  kUpdateState = 117,
+  kUpdateCommand = 118,
   kNoiseSetKeyRequest = 124,
   kNoiseSetKeyResponse = 125,
   kHaActionResponse = 130,
@@ -406,6 +409,11 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
     w.str(14, e.icon);
     w.u32(15, cat);
     return kListLight;
+  case Kind::kUpdate:
+    w.str(5, e.icon);
+    w.u32(7, cat);
+    w.str(8, e.device_class);
+    return kListUpdate;
   }
   return 0;
 }
@@ -459,6 +467,30 @@ uint16_t encode_state(const Entity &e, esphome_pb::Writer &w) {
   }
   case Kind::kButton:
     return 0;
+  case Kind::kUpdate: {
+    if (e.get_update == nullptr) {
+      return 0;
+    }
+    // Static: 250 B is a big bite of the 12 KB server stack, and only the
+    // server task ever encodes.
+    static UpdateState u;
+    u = UpdateState{};
+    e.get_update(&u);
+    if (u.current[0] == '\0') {
+      w.boolean(2, true); // missing_state
+      return kUpdateState;
+    }
+    w.boolean(3, u.in_progress);
+    if (u.in_progress && u.progress >= 0) {
+      w.boolean(4, true); // has_progress
+      w.f32(5, u.progress);
+    }
+    w.str(6, u.current);
+    w.str(7, u.latest[0] != '\0' ? u.latest : u.current);
+    w.str(8, u.title);
+    w.str(9, u.summary);
+    return kUpdateState;
+  }
   }
   return 0;
 }
@@ -592,6 +624,7 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
   bool has_state = false, has_bri = false;
   bool state_v = false;
   float bri_v = 0.0f; // proto3: an absent float is 0
+  uint32_t update_cmd = 0; // UPDATE_COMMAND_NONE
   while (r.next()) {
     if (r.field() == 1) {
       key = r.as_fixed32();
@@ -617,6 +650,8 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
         b = r.as_bool();
       } else if (type == kNumberCommand) {
         f = r.as_f32();
+      } else if (type == kUpdateCommand) {
+        update_cmd = r.as_u32();
       } else if (type == kSelectCommand) {
         size_t n;
         const uint8_t *p = r.as_bytes(&n);
@@ -659,6 +694,12 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
   case kLightCommand:
     if (e->set_light) {
       e->set_light(light_state, light_bri);
+    }
+    break;
+  case kUpdateCommand:
+    // UPDATE_COMMAND_UPDATE = 1, UPDATE_COMMAND_CHECK = 2.
+    if (e->update_cmd && (update_cmd == 1 || update_cmd == 2)) {
+      e->update_cmd(update_cmd == 1);
     }
     break;
   default:
@@ -807,6 +848,7 @@ void dispatch(Client &c, uint16_t type, const uint8_t *data, size_t len) {
   case kSelectCommand:
   case kButtonCommand:
   case kLightCommand:
+  case kUpdateCommand:
     on_command(type, r);
     break;
   case kSubscribeLogsRequest:

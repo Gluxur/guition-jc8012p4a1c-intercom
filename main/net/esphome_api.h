@@ -26,11 +26,24 @@ enum class Kind : uint8_t {
   kNumber,
   kSelect,
   kButton,
-  kLight, // brightness-only light (the screen backlight)
+  kLight,  // brightness-only light (the screen backlight)
+  kUpdate, // firmware update: HA's Settings -> Updates card, "Install" button
 };
 
 // Values of api.proto's EntityCategory.
 enum class Category : uint8_t { kNone = 0, kConfig = 1, kDiagnostic = 2 };
+
+// kUpdate state, filled by Entity::get_update. Strings NUL-terminated, empty
+// = absent. HA shows "update available" when `latest` differs from `current`
+// (exactly equal = up to date; versions it cannot order = available).
+struct UpdateState {
+  bool in_progress = false;
+  float progress = -1; // 0..100, < 0 = unknown (indeterminate bar)
+  char current[32] = {};
+  char latest[32] = {};
+  char title[48] = {};
+  char summary[128] = {}; // release notes shown by HA
+};
 
 // One HA entity. Only the members relevant to `kind` are read; the others
 // stay at their defaults. Getters and setters run in the API server task
@@ -65,6 +78,10 @@ struct Entity {
   // kLight: `state` -1 = unchanged, 0 = off, 1 = on; `brightness` 0..1 or
   // NAN = unchanged.
   void (*set_light)(int state, float brightness) = nullptr;
+  // kUpdate: get_update fills the state; update_cmd(true) = install,
+  // update_cmd(false) = check for a new version.
+  void (*get_update)(UpdateState *out) = nullptr;
+  void (*update_cmd)(bool install) = nullptr;
   // get_*() reads the SD card: skipped while `Config::busy` says so.
   bool sd_touching = false;
   // Still refreshed every 30 s while `Config::busy` (e.g. the in-call state).
