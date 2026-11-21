@@ -100,7 +100,8 @@ remounts the card and reloads the ringtone.
 ## Connectivity watchdog
 
 Reboots after 5 min without Wi-Fi or 30 min without Home Assistant connected
-to the API. Frozen during a call, an OTA, USB mode, and while the board has no
+to the API (that second rule only applies once HA has adopted the board and
+provisioned its key). Frozen during a call, an OTA, USB mode, and while the board has no
 SSID or host configured.
 
 ## Re-adopting the board in Home Assistant

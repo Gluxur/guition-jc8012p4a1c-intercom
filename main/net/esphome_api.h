@@ -99,6 +99,11 @@ void publish(const char *object_id);
 // True while at least one client (normally HA) is subscribed to states.
 [[nodiscard]] bool connected();
 
+// True once Home Assistant has provisioned an encryption key (kept in NVS).
+// Before that nobody has adopted the board yet: "HA absent" is the expected
+// state, not a failure worth a reboot or a rollback.
+[[nodiscard]] bool provisioned();
+
 // dbg_log line sink: forwards log lines to clients that subscribed to logs
 // (HA's "subscribe to logs" option, `aioesphomeapi-logs`, ...). Called from
 // any task in the logging path: only copies into a ring, never blocks.

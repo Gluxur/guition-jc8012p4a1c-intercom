@@ -419,14 +419,16 @@ extern "C" void app_main(void) {
 
   // Point de validation "boot sain" = WiFi (déjà connecté) + Home Assistant
   // connecté à l'API. Attente bornée (~60 s : HA se reconnecte sur l'annonce
-  // mDNS, avec un backoff) : au-delà, on ne valide pas ici.
-  for (int i = 0; i < 120 && !ha_api::connected(); i++) {
+  // mDNS, avec un backoff) : au-delà, on ne valide pas ici. Carte jamais
+  // adoptée (pas de clé) : personne n'est attendu, le Wi-Fi suffit.
+  const bool ha_expected = esphome_api::provisioned();
+  for (int i = 0; i < 120 && ha_expected && !ha_api::connected(); i++) {
     vTaskDelay(pdMS_TO_TICKS(500));
   }
   // Conditionnel : valider une image qui n'a jamais vu Home Assistant vidait
   // le rollback de son sens. Sinon net_wdt reprend la validation au premier
   // tick connecté — ou redémarre, et le bootloader revient en arrière.
-  if (ha_api::connected()) {
+  if (ha_expected ? ha_api::connected() : wifi_net::link_up()) {
     ota_confirm_valid_if_pending();
   }
 

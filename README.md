@@ -65,7 +65,7 @@ encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
   API (HA log or `aioesphomeapi-logs`).
 - **USB mass-storage mode**: expose the SD card to a PC over the OTG port.
 - **Connectivity watchdog**: reboot if Wi-Fi is down 5 min or Home Assistant
-  absent 30 min, never during a call, an OTA or USB mode.
+  absent 30 min (once adopted), never during a call, an OTA or USB mode.
 - Custom ringtones: any 8 kHz mono WAV at the root of the SD card.
 
 ## Hardware

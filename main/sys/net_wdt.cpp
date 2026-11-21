@@ -66,7 +66,13 @@ void task(void *) {
     if (wifi_net::link_up()) {
       last_wifi_ok = now;
     }
-    if (esphome_api::connected()) {
+    // Pas encore adoptée par Home Assistant (aucune clé) : son absence est
+    // l'état normal d'une installation neuve. Sans cette exception la carte
+    // redémarrait toutes les 30 min avant l'adoption, et une image flashée
+    // avant elle n'était jamais validée (rollback au premier reboot).
+    const bool ha_ok = esphome_api::connected() ||
+                       (!esphome_api::provisioned() && wifi_net::link_up());
+    if (ha_ok) {
       last_ha_ok = now;
       // Point de validation "boot sain" rejoué à chaque tick tant que l'image
       // reste en PENDING_VERIFY : la fenêtre unique d'app_main ratait tout

@@ -153,7 +153,8 @@ portMUX_TYPE s_log_mux = portMUX_INITIALIZER_UNLOCKED;
 std::atomic<uint32_t> s_next_call_id{1};
 
 uint8_t s_psk[noise::kKeyLen] = {};
-bool s_has_psk = false;
+// Read by net_wdt and the boot health check (other tasks), written here.
+std::atomic<bool> s_has_psk{false};
 
 // Shared work buffers, PSRAM: the server task is their only user.
 uint8_t *s_tx = nullptr;  // kTxRoom + kTxCap: header room + payload
@@ -961,14 +962,17 @@ void process_rx(Client &c) {
     }
 
     if (c.mode == Mode::kPlain) {
-      size_t hl;
-      uint32_t plen, type;
+      size_t hl = 0;
+      uint32_t plen = 0, type = 0;
       const auto st = esphome_frame::parse_plain_header(p, avail, &hl, &plen, &type);
+      if (st == esphome_frame::Parse::kNeedMore) {
+        break; // header itself incomplete (at most 11 bytes: rx holds it)
+      }
       if (st == esphome_frame::Parse::kBad || plen > kRxMax) {
         c.closing = true;
         break;
       }
-      if (st == esphome_frame::Parse::kNeedMore || avail < hl + plen) {
+      if (avail < hl + plen) {
         if (!ensure_rx(c, hl + plen)) {
           c.closing = true;
         }
@@ -1375,6 +1379,8 @@ void publish(const char *object_id) {
 }
 
 bool connected() { return s_subscribed.load() > 0; }
+
+bool provisioned() { return s_has_psk.load(); }
 
 void log_line(const char *line, size_t len) {
   if (s_log_ring == nullptr || s_log_subscribers.load() == 0 || len == 0) {
