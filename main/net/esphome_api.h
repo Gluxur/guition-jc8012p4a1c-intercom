@@ -28,6 +28,7 @@ enum class Kind : uint8_t {
   kButton,
   kLight,  // brightness-only light (the screen backlight)
   kUpdate, // firmware update: HA's Settings -> Updates card, "Install" button
+  kText,   // free text field on the device page (config: entity ids)
 };
 
 // Values of api.proto's EntityCategory.
@@ -82,6 +83,8 @@ struct Entity {
   // update_cmd(false) = check for a new version.
   void (*get_update)(UpdateState *out) = nullptr;
   void (*update_cmd)(bool install) = nullptr;
+  // kText: longest value HA lets the user type (get_text / set_text).
+  uint8_t max_len = 64;
   // get_*() reads the SD card: skipped while `Config::busy` says so.
   bool sd_touching = false;
   // Still refreshed every 30 s while `Config::busy` (e.g. the in-call state).
@@ -100,6 +103,12 @@ struct Config {
   // Called once per client when it subscribes to HA actions (in the server
   // task). Lets the app fire its first action calls as soon as possible.
   void (*on_ha_ready)() = nullptr;
+  // A state pushed by HA for an entity requested with watch_ha_state(), in
+  // the server task. NUL-terminated copies; `attribute` is "" for the state
+  // itself. HA also keeps sending ids that were replaced in a slot until the
+  // connection drops: the callee filters by id.
+  void (*on_ha_state)(const char *entity_id, const char *attribute,
+                      const char *state) = nullptr;
 };
 
 inline constexpr size_t kMaxEntities = 64;
@@ -126,6 +135,16 @@ void publish(const char *object_id);
 // any task in the logging path: only copies into a ring, never blocks.
 void log_line(const char *line, size_t len);
 
+// --- Home Assistant states -------------------------------------------------
+
+inline constexpr size_t kMaxHaWatches = 4;
+
+// Asks every connected HA (and every later one) to push the state of
+// `entity_id`, now and on each change, to Config::on_ha_state. Slot-based so
+// a reconfigured entity replaces the old one. Empty id = slot cleared. The id
+// is copied (<= 127 characters). Safe from any task.
+void watch_ha_state(uint8_t slot, const char *entity_id);
+
 // --- Home Assistant actions -------------------------------------------------
 
 struct Kv {
@@ -146,8 +165,17 @@ using ActionDone = void (*)(void *ctx, bool ok, const char *error,
 // state_attr()...), to reshape or shrink the payload. All strings are copied.
 // Returns false if no client is subscribed to actions or the queue is full;
 // otherwise `done(ctx, ...)` is called exactly once, in the server task.
+// `wants_response` false: for actions that return no data (cover.open_cover):
+// HA rejects those when a response is requested. `done` still gets exactly
+// one call, with `json` nullptr; `response_template` is ignored.
 bool call_action(const char *service, const Kv *data, size_t n,
-                 const char *response_template, ActionDone done, void *ctx);
+                 const char *response_template, ActionDone done, void *ctx,
+                 bool wants_response = true);
+
+// Fires the HA event `name` (must start with "esphome."; HA adds the
+// device_id) with string `data`. Fire and forget, no answer. Needs no HA
+// option. Returns false if the name is invalid or the queue is full.
+bool fire_event(const char *name, const Kv *data, size_t n);
 
 // Blocking variant for fetch tasks: waits for the answer and copies the body
 // into `out` (NUL-terminated). Returns false on any failure, including a body

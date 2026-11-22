@@ -82,6 +82,11 @@ enum Msg : uint16_t {
   kSubscribeHaServices = 34,
   kHaActionRequest = 35,
   kSubscribeHaStates = 38,
+  kSubscribeHaStateResponse = 39,
+  kHaStateResponse = 40,
+  kListText = 97,
+  kTextState = 98,
+  kTextCommand = 99,
   kListNumber = 49,
   kNumberState = 50,
   kNumberCommand = 51,
@@ -115,6 +120,7 @@ struct Client {
   bool sub_states = false;
   bool sub_services = false;
   bool sub_logs = false;
+  bool sub_ha_states = false; // HA sent 38: it accepts our 39 requests
   uint8_t log_level = 0; // LogLevel requested by the client
   bool closing = false; // close once the current batch is processed
   int64_t last_rx_us = 0;
@@ -154,6 +160,17 @@ size_t s_log_tail = 0; // read offset
 size_t s_log_used = 0;
 portMUX_TYPE s_log_mux = portMUX_INITIALIZER_UNLOCKED;
 std::atomic<uint32_t> s_next_call_id{1};
+
+// HA states requested by the app (watch_ha_state). Written from any task,
+// read by the server task: copied under s_watch_mux. `pending` = not yet sent
+// to the clients already subscribed.
+struct Watch {
+  char entity_id[128];
+  bool pending;
+};
+Watch s_watches[kMaxHaWatches] = {};
+portMUX_TYPE s_watch_mux = portMUX_INITIALIZER_UNLOCKED;
+std::atomic<bool> s_watch_pending{false};
 
 uint8_t s_psk[noise::kKeyLen] = {};
 // Read by net_wdt and the boot health check (other tasks), written here.
@@ -414,6 +431,12 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
     w.u32(7, cat);
     w.str(8, e.device_class);
     return kListUpdate;
+  case Kind::kText:
+    w.str(5, e.icon);
+    w.u32(7, cat);
+    w.u32(9, e.max_len);
+    // mode 11 = TEXT_MODE_TEXT = 0: omitted (proto3 default)
+    return kListText;
   }
   return 0;
 }
@@ -444,13 +467,19 @@ uint16_t encode_state(const Entity &e, esphome_pb::Writer &w) {
     return e.kind == Kind::kSensor ? kSensorState : kNumberState;
   }
   case Kind::kTextSensor:
-  case Kind::kSelect: {
+  case Kind::kSelect:
+  case Kind::kText: {
     if (e.get_text == nullptr) {
       return 0;
     }
     char buf[128];
     buf[0] = '\0';
     e.get_text(buf, sizeof buf);
+    if (e.kind == Kind::kText) {
+      // An empty text is a real state ("not configured"), not a missing one.
+      w.bytes_always(2, buf, strlen(buf));
+      return kTextState;
+    }
     w.str(2, buf);
     return e.kind == Kind::kSelect ? kSelectState : kTextSensorState;
   }
@@ -620,7 +649,7 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
   uint32_t key = 0;
   bool b = false;
   float f = NAN;
-  char text[64] = {};
+  char text[128] = {};
   bool has_state = false, has_bri = false;
   bool state_v = false;
   float bri_v = 0.0f; // proto3: an absent float is 0
@@ -652,7 +681,7 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
         f = r.as_f32();
       } else if (type == kUpdateCommand) {
         update_cmd = r.as_u32();
-      } else if (type == kSelectCommand) {
+      } else if (type == kSelectCommand || type == kTextCommand) {
         size_t n;
         const uint8_t *p = r.as_bytes(&n);
         if (p != nullptr) {
@@ -682,6 +711,7 @@ void on_command(uint16_t type, esphome_pb::Reader &r) {
     }
     break;
   case kSelectCommand:
+  case kTextCommand:
     if (e->set_text) {
       e->set_text(text);
     }
@@ -753,6 +783,82 @@ void on_set_key(Client &c, esphome_pb::Reader &r) {
         other.closing = true;
       }
     }
+  }
+}
+
+// One 39 per non-empty slot, to one client.
+void send_all_watches(Client &c) {
+  for (size_t i = 0; i < kMaxHaWatches && !c.closing; i++) {
+    char id[sizeof(Watch::entity_id)];
+    taskENTER_CRITICAL(&s_watch_mux);
+    memcpy(id, s_watches[i].entity_id, sizeof id);
+    taskEXIT_CRITICAL(&s_watch_mux);
+    if (id[0] == '\0') {
+      continue;
+    }
+    esphome_pb::Writer w = writer();
+    w.str(1, id);
+    send_written(c, kSubscribeHaStateResponse, w);
+  }
+}
+
+// Slots changed since the last pass: send them to the clients already
+// subscribed (the others get every slot on their 38).
+void flush_watches() {
+  if (!s_watch_pending.exchange(false)) {
+    return;
+  }
+  for (size_t i = 0; i < kMaxHaWatches; i++) {
+    char id[sizeof(Watch::entity_id)];
+    bool pending;
+    taskENTER_CRITICAL(&s_watch_mux);
+    pending = s_watches[i].pending;
+    s_watches[i].pending = false;
+    memcpy(id, s_watches[i].entity_id, sizeof id);
+    taskEXIT_CRITICAL(&s_watch_mux);
+    if (!pending || id[0] == '\0') {
+      continue;
+    }
+    for (Client &c : s_clients) {
+      if (c.fd >= 0 && c.sub_ha_states && !c.closing) {
+        esphome_pb::Writer w = writer();
+        w.str(1, id);
+        send_written(c, kSubscribeHaStateResponse, w);
+      }
+    }
+  }
+}
+
+void on_ha_state_response(esphome_pb::Reader &r) {
+  char id[128] = {}, state[128] = {}, attr[64] = {};
+  while (r.next()) {
+    size_t n = 0;
+    const uint8_t *p = nullptr;
+    switch (r.field()) {
+    case 1:
+      p = r.as_bytes(&n);
+      if (p != nullptr) {
+        snprintf(id, sizeof id, "%.*s", (int)n, (const char *)p);
+      }
+      break;
+    case 2:
+      p = r.as_bytes(&n);
+      if (p != nullptr) {
+        snprintf(state, sizeof state, "%.*s", (int)n, (const char *)p);
+      }
+      break;
+    case 3:
+      p = r.as_bytes(&n);
+      if (p != nullptr) {
+        snprintf(attr, sizeof attr, "%.*s", (int)n, (const char *)p);
+      }
+      break;
+    default:
+      break;
+    }
+  }
+  if (id[0] != '\0' && s_cfg->on_ha_state != nullptr) {
+    s_cfg->on_ha_state(id, attr, state);
   }
 }
 
@@ -842,13 +948,19 @@ void dispatch(Client &c, uint16_t type, const uint8_t *data, size_t len) {
     }
     break;
   case kSubscribeHaStates:
-    break; // no imported HA state yet: nothing to send
+    c.sub_ha_states = true;
+    send_all_watches(c);
+    break;
+  case kHaStateResponse:
+    on_ha_state_response(r);
+    break;
   case kSwitchCommand:
   case kNumberCommand:
   case kSelectCommand:
   case kButtonCommand:
   case kLightCommand:
   case kUpdateCommand:
+  case kTextCommand:
     on_command(type, r);
     break;
   case kSubscribeLogsRequest:
@@ -1083,6 +1195,7 @@ void close_client(Client &c) {
   c.rx_len = c.rx_cap = 0;
   c.hs = nullptr;
   c.hello = c.sub_states = c.sub_services = c.sub_logs = c.closing = false;
+  c.sub_ha_states = false;
   c.log_level = 0;
 }
 
@@ -1158,12 +1271,16 @@ void drain_actions() {
       }
     }
     bool sent = false;
-    if (target != nullptr && slot != nullptr && qa.len <= kTxCap) {
+    // Events (done == nullptr) get no answer from HA: no pending slot.
+    const bool slot_ok = qa.done == nullptr || slot != nullptr;
+    if (target != nullptr && slot_ok && qa.len <= kTxCap) {
       memcpy(s_tx + kTxRoom, qa.msg, qa.len);
       sent = send_msg(*target, kHaActionRequest, qa.len);
     }
     heap_caps_free(qa.msg);
-    if (sent) {
+    if (sent && qa.done == nullptr) {
+      // event: nothing to wait for
+    } else if (sent) {
       slot->call_id = qa.call_id;
       slot->done = qa.done;
       slot->ctx = qa.ctx;
@@ -1330,6 +1447,7 @@ void server_task(void *) {
     }
 
     drain_actions();
+    flush_watches();
     drain_logs();
 
     const uint64_t dirty = s_dirty.exchange(0);
@@ -1445,8 +1563,12 @@ void log_line(const char *line, size_t len) {
   taskEXIT_CRITICAL(&s_log_mux);
 }
 
-bool call_action(const char *service, const Kv *data, size_t n,
-                 const char *response_template, ActionDone done, void *ctx) {
+namespace {
+// Encodes a HomeassistantActionRequest into a PSRAM buffer and queues it for
+// the server task. call_id 0 = none (events).
+bool queue_request(const char *service, const Kv *data, size_t n,
+                   bool is_event, uint32_t call_id, bool wants_response,
+                   const char *response_template, ActionDone done, void *ctx) {
   if (s_cfg == nullptr || s_actions == nullptr) {
     return false;
   }
@@ -1456,7 +1578,6 @@ bool call_action(const char *service, const Kv *data, size_t n,
   if (buf == nullptr) {
     return false;
   }
-  const uint32_t id = s_next_call_id.fetch_add(1);
   esphome_pb::Writer w(buf, kCap);
   w.str(1, service);
   for (size_t i = 0; i < n; i++) {
@@ -1470,19 +1591,52 @@ bool call_action(const char *service, const Kv *data, size_t n,
     }
     w.bytes(2, m.data(), m.size());
   }
-  w.u32(6, id);
-  w.boolean(7, true); // wants_response
-  w.str(8, response_template);
+  w.boolean(5, is_event);
+  w.u32(6, call_id);
+  if (wants_response) {
+    w.boolean(7, true);
+    w.str(8, response_template);
+  }
   if (!w.ok()) {
     heap_caps_free(buf);
     return false;
   }
-  const QueuedAction qa = {buf, w.size(), id, done, ctx};
+  const QueuedAction qa = {buf, w.size(), call_id, done, ctx};
   if (xQueueSend(s_actions, &qa, 0) != pdTRUE) {
     heap_caps_free(buf);
     return false;
   }
   return true;
+}
+} // namespace
+
+bool call_action(const char *service, const Kv *data, size_t n,
+                 const char *response_template, ActionDone done, void *ctx,
+                 bool wants_response) {
+  const uint32_t id = s_next_call_id.fetch_add(1);
+  return queue_request(service, data, n, false, id, wants_response,
+                       response_template, done, ctx);
+}
+
+bool fire_event(const char *name, const Kv *data, size_t n) {
+  if (name == nullptr || strncmp(name, "esphome.", 8) != 0) {
+    return false;
+  }
+  return queue_request(name, data, n, true, 0, false, nullptr, nullptr,
+                       nullptr);
+}
+
+void watch_ha_state(uint8_t slot, const char *entity_id) {
+  if (slot >= kMaxHaWatches) {
+    return;
+  }
+  char copy[sizeof(Watch::entity_id)];
+  snprintf(copy, sizeof copy, "%s", entity_id != nullptr ? entity_id : "");
+  taskENTER_CRITICAL(&s_watch_mux);
+  memcpy(s_watches[slot].entity_id, copy, sizeof copy);
+  s_watches[slot].pending = copy[0] != '\0';
+  taskEXIT_CRITICAL(&s_watch_mux);
+  s_watch_pending.store(true);
 }
 
 namespace {
