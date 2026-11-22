@@ -101,13 +101,11 @@ Installation constants that are not editable on screen live in
 | `kHaWeatherEntity`, `kHaCalendarEntity`, `kHaGateEntity` | `weather.forecast_home`, `calendar.home`, none | First-boot defaults of the HA entity ids (`APP_SECRET_HA_*_ENTITY` in `main/app_secrets.h`). Once the board runs, they are edited from its device page in HA — see [server-setup.md](server-setup.md#entity-ids-gate-weather-calendar) |
 | `kTimezone` | `CET-1CEST,M3.5.0,M10.5.0/3` | POSIX TZ string (Europe/Paris) |
 | `kGo2rtcAudioSrc`, `kGo2rtcMicSrc`, `kGo2rtcMjpeg2Src` | `vto_audio_only`, `vto_audio_input_only`, `vto_mjpeg2` | go2rtc stream names |
-| `kGo2rtcPort`, `kHaPort` | 1984, 8123 | Service ports (`kHaPort`: OTA image only) |
+| `kGo2rtcPort` | 1984 | go2rtc API port |
+| `kGithubRepo` | `Gluxur/guition-jc8012p4a1c-intercom` | GitHub repository whose releases the update entity offers — change it in a fork |
 
 The ESPHome API listens on TCP **6053**; the device name `visiophone` and the
-entity table are in [`main/app/ha_api.cpp`](../main/app/ha_api.cpp). The
-firmware update entity fetches `https://<host>:8123/local/fw.bin`; if
-your HA only serves plain HTTP, change the scheme of `s_url_ota` in
-`main/sys/settings.cpp`.
+entity table are in [`main/app/ha_api.cpp`](../main/app/ha_api.cpp).
 
 ## 5. microSD card
 

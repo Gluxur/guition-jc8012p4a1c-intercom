@@ -7,7 +7,6 @@ field in the settings):
 |---|---|---|
 | go2rtc | 1984 (HTTP API), 8555 (WebRTC) | MJPEG video, WebRTC audio in and out |
 | Home Assistant | — (HA connects **to** the board on 6053) | Entities, doorbell, weather, calendar, logs |
-| Home Assistant | 8123 (HTTPS) | Only to serve a firmware image to the firmware update entity (optional) |
 
 A typical setup is Home Assistant OS with the **go2rtc add-on (AlexxIT)**.
 No MQTT broker and no access token are needed: the board speaks the
@@ -219,9 +218,10 @@ The key is the `noise_psk` of the ESPHome entry in Home Assistant's
 `/config/.storage/core.config_entries` (diagnostics downloads redact it).
 Treat it like a password.
 
-### Firmware served by Home Assistant (optional)
+### Firmware updates
 
-Copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA: the
-"Firmware" update entity reads its version and offers it in *Settings →
-Updates*; Install downloads `https://<host>:8123/local/fw.bin`. Details and the
-other ways to update are in [maintenance.md](maintenance.md#from-home-assistant-update-entity).
+Nothing to set up: the "Firmware" update entity offers the latest GitHub
+release of the project and installs it from GitHub (the board needs Internet
+access to `api.github.com` and `github.com`). See
+[maintenance.md](maintenance.md#from-github-releases-update-entity).
+

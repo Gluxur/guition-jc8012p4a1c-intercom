@@ -49,29 +49,40 @@ curl -X POST "http://<ip>/api/rm?path=/sdcard/fw_new.bin"
 `http://<ip>/` also serves a small web page to browse, download and upload SD
 files. The server has **no authentication**: keep it off outside maintenance.
 
-### From Home Assistant (update entity)
+### From GitHub releases (update entity)
 
 The board exposes a regular Home Assistant **update** entity, "Visiophone
-Firmware", so new firmware shows up in *Settings → Updates* like any other
-device:
+Firmware". It offers the latest release of this repository on GitHub, so new
+firmware shows up in *Settings → Updates* like for any other device, with the
+release notes and a link to the release page:
 
-1. Copy `build/esp32_p4_webrtc_cam.bin` to `/config/www/fw.bin` on HA (Samba,
-   File editor, `scp`…).
-2. Wait, or ask for a check right away: *Developer tools → Actions →*
-   `homeassistant.update_entity` on `update.visiophone_firmware`.
-3. *Settings → Updates → Visiophone → Install*. The progress bar follows the
+1. *Settings → Updates → Visiophone → Install*. The progress bar follows the
    download; the board reboots and the entity goes back to "up to date".
+2. To check right away instead of waiting: *Developer tools → Actions →*
+   `homeassistant.update_entity` on `update.visiophone_firmware`.
 
-How the board knows about the new image: it reads only the first 144 bytes of
-`https://<host>:8123/local/fw.bin` (HTTP Range request) and takes the version
-from the image header. No manifest to keep in sync. It checks each time HA
-connects to it, every 6 h, and on `homeassistant.update_entity`; never during
-a call. An image whose project name is not this firmware's is ignored.
+How it works:
 
-HA offers the update whenever the published version **differs** from the
-running one (git hashes cannot be ordered), so an older `fw.bin` is offered
-too: delete `/config/www/fw.bin` once installed if that bothers you. The URL
-is built from the configured host, never received from the network.
+- **Check.** The board asks `api.github.com` for
+  `/repos/<cfg::kGithubRepo>/releases/latest`: each time HA connects to it,
+  every 6 h, and on `homeassistant.update_entity`. Never during a call.
+- **Version.** The offered version is the release tag (`v2.1.0`), which HA
+  compares with the running one.
+- **Download.** Install streams the release asset `esp32_p4_webrtc_cam.bin`
+  straight into the inactive OTA slot. No SD card involved, and rollback is
+  unchanged.
+- **Accepted source.** Only an asset under
+  `https://github.com/<repo>/releases/download/` is accepted. The image must
+  also carry this firmware's project name, checked before anything is written.
+- **Verified TLS.** Every connection verifies the server certificate, using
+  the ESP-IDF certificate bundle.
+- **No token.** The repository must be public. GitHub allows 60
+  unauthenticated requests per hour and IP; the board needs a handful per day.
+  A private repository answers 404, and the entity then shows no update.
+
+A fork changes `cfg::kGithubRepo` in `main/app_config.h` to receive its own
+releases. Builds of your own that are not released go through the SD card or
+the file server (above).
 
 There is no ESPHome dashboard "Install": the dashboard compiles a YAML with
 its own ESP-IDF, which cannot produce this firmware, and the ESPHome OTA

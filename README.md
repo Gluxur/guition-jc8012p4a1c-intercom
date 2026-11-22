@@ -61,8 +61,8 @@ encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
   entities (screen light, DND, volumes, page selector, doorbell, reboot, OTA,
   RSSI, CPU, PSRAM, missed calls, presence…). Weather and calendar are HA
   actions run on the board's behalf.
-- **OTA** from Home Assistant (a regular update entity in Settings →
-  Updates), from the microSD card, or over the built-in
+- **OTA** from the project's GitHub releases (a regular update entity in
+  HA's Settings → Updates, verified TLS), from the microSD card, or over the built-in
   file server, with automatic rollback if the new image cannot reach the
   network.
 - **microSD log** (dated files, 14-day retention), **live logs** through the
