@@ -31,7 +31,6 @@ bool s_provisioned = false;
 char s_url_audio[160];
 char s_url_mic[160];
 char s_url_mjpeg2[160];
-char s_url_ota[160];
 
 void copy_default(char *dst, size_t cap, const char *src) {
   strncpy(dst, src, cap - 1);
@@ -61,10 +60,6 @@ void build_urls() {
   snprintf(s_url_mjpeg2, sizeof(s_url_mjpeg2),
            "http://%s:%d/api/stream.mjpeg?src=%s", host, cfg::kGo2rtcPort,
            cfg::kGo2rtcMjpeg2Src);
-  // https et non http : Home Assistant ne sert QUE du TLS sur kHaPort (constaté
-  // le 29/07/2026 — http refuse la connexion, https répond 200).
-  snprintf(s_url_ota, sizeof(s_url_ota), "https://%s:%d%s", host, cfg::kHaPort,
-           cfg::kOtaFirmwarePath);
 }
 
 } // namespace
@@ -147,6 +142,5 @@ bool save(const Config &cfg) {
 const char *go2rtc_audio_url() { return s_url_audio; }
 const char *go2rtc_mic_url() { return s_url_mic; }
 const char *go2rtc_mjpeg2_url() { return s_url_mjpeg2; }
-const char *ota_firmware_url() { return s_url_ota; }
 
 } // namespace settings

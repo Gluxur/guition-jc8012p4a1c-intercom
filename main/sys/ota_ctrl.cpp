@@ -6,7 +6,9 @@
 #include <sys/stat.h>
 #include <type_traits>
 
+#include "app_config.h"
 #include "esp_app_desc.h"
+#include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
@@ -34,14 +36,19 @@ void (*s_changed)() = nullptr;
 // Vérification de version : faite par la tâche `ota` elle-même, jamais en
 // parallèle d'un téléchargement — deux sessions TLS simultanées doubleraient
 // la SRAM interne réclamée par mbedTLS.
-std::atomic<const char *> s_check_url{nullptr};
 std::atomic<bool> s_check_pending{false};
+// Armé au premier request_check() : la vérification périodique n'a de sens
+// qu'une fois le Wi-Fi et HA là.
+std::atomic<bool> s_check_enabled{false};
+// Réponse de l'API GitHub : une release avec ses notes tient en quelques Ko.
+constexpr size_t kApiBufBytes = 32 * 1024;
 // En secondes × configTICK_RATE_HZ, pas pdMS_TO_TICKS : ce dernier multiplie
 // en TickType_t 32 bits, et 21,6 M ms × 1000 Hz déborde.
 constexpr TickType_t kCheckPeriod = (TickType_t)(6 * 3600) * configTICK_RATE_HZ;
 // Sous s_status_mtx, comme le statut : c'est le même lecteur (tâche API).
-ImageInfo s_latest = {};
+github_release::Release s_latest = {};
 bool s_latest_known = false;
+char s_api_url[160] = {};
 std::atomic<int> s_progress{-1};
 
 char s_url[256] = {0};
@@ -99,14 +106,14 @@ void notify_changed() {
   }
 }
 
-void store_latest(const ImageInfo &info) {
+void store_latest(const github_release::Release &rel) {
   if (s_status_mtx == nullptr) {
-    s_latest = info;
+    s_latest = rel;
     s_latest_known = true;
     return;
   }
   sys::MutexLock lock(s_status_mtx);
-  s_latest = info;
+  s_latest = rel;
   s_latest_known = true;
 }
 
@@ -117,84 +124,83 @@ struct HttpCloser {
   }
 };
 
-// Lit les 144 premiers octets de l'image publiée (en-tête + esp_app_desc_t).
-// Même TLS sans certificat que do_ota(), pour la même raison. Un serveur qui
-// ignore Range renvoie 200 et toute l'image : on ferme après l'en-tête.
-// Renvoie false sur erreur réseau (on garde alors le dernier résultat connu).
-bool do_check(const char *url) {
+// GET /repos/<repo>/releases/latest, certificat vérifié (bundle de l'IDF).
+// Renvoie false sur erreur réseau ou réponse inattendue : le dernier résultat
+// connu est alors gardé.
+bool do_check() {
   esp_http_client_config_t http = {};
-  http.url = url;
+  http.url = s_api_url;
   http.timeout_ms = 10000;
+  http.crt_bundle_attach = esp_crt_bundle_attach;
+  http.user_agent = cfg::kHttpUserAgent;
   std::unique_ptr<std::remove_pointer_t<esp_http_client_handle_t>, HttpCloser>
       client(esp_http_client_init(&http));
   if (!client) {
     return false;
   }
-  char range[32];
-  snprintf(range, sizeof range, "bytes=0-%u",
-           (unsigned)(ota_image::kHeaderProbeBytes - 1));
-  esp_http_client_set_header(client.get(), "Range", range);
+  esp_http_client_set_header(client.get(), "Accept", "application/vnd.github+json");
   if (esp_http_client_open(client.get(), 0) != ESP_OK) {
-    ESP_LOGW(TAG, "check: connexion impossible");
+    ESP_LOGW(TAG, "check: connexion à GitHub impossible");
     return false;
   }
   esp_http_client_fetch_headers(client.get());
   const int code = esp_http_client_get_status_code(client.get());
-  ImageInfo out = {};
   if (code == 404) {
-    ESP_LOGI(TAG, "check: aucune image publiée");
-    store_latest(out);
+    // Aucune release publiée, ou dépôt privé : rien à proposer.
+    ESP_LOGI(TAG, "check: aucune release (HTTP 404)");
+    store_latest(github_release::Release{});
     return true;
   }
-  if (code != 200 && code != 206) {
+  if (code != 200) {
+    // 403 = quota de l'API anonyme (60/h) : on réessaiera au prochain tour.
     ESP_LOGW(TAG, "check: HTTP %d", code);
     return false;
   }
-  uint8_t head[ota_image::kHeaderProbeBytes];
+  std::unique_ptr<char, CapsFree> buf(
+      static_cast<char *>(heap_caps_malloc(kApiBufBytes, MALLOC_CAP_SPIRAM)));
+  if (!buf) {
+    return false;
+  }
   size_t got = 0;
-  while (got < sizeof head) {
-    const int n = esp_http_client_read(client.get(), (char *)head + got,
-                                       (int)(sizeof head - got));
+  for (;;) {
+    const int n = esp_http_client_read(client.get(), buf.get() + got,
+                                       (int)(kApiBufBytes - 1 - got));
     if (n <= 0) {
       break;
     }
     got += (size_t)n;
+    if (got >= kApiBufBytes - 1) {
+      ESP_LOGW(TAG, "check: réponse > %u o, ignorée", (unsigned)kApiBufBytes);
+      return false;
+    }
   }
-  ota_image::Info info = {};
-  if (got != sizeof head || !ota_image::parse_header(head, got, &info)) {
-    ESP_LOGW(TAG, "check: l'image publiée n'est pas un firmware");
-    store_latest(out);
+  buf.get()[got] = '\0';
+  github_release::Release rel = {};
+  if (!github_release::parse_latest(buf.get(), cfg::kGithubRepo,
+                                    cfg::kGithubAsset, &rel)) {
+    ESP_LOGW(TAG, "check: release sans asset %s valide", cfg::kGithubAsset);
+    store_latest(github_release::Release{});
     return true;
   }
-  // Une image d'un autre projet ne doit jamais être proposée à l'installation :
-  // esp_https_ota ne compare pas les noms de projet.
-  const esp_app_desc_t *self = esp_app_get_description();
-  if (self != nullptr && strcmp(info.project, self->project_name) != 0) {
-    ESP_LOGW(TAG, "check: image d'un autre projet (%s), ignorée", info.project);
-    store_latest(out);
-    return true;
-  }
-  snprintf(out.version, sizeof out.version, "%s", info.version);
-  snprintf(out.project, sizeof out.project, "%s", info.project);
-  snprintf(out.date, sizeof out.date, "%s", info.date);
-  const int64_t total = esp_http_client_get_content_length(client.get());
-  out.size_bytes = (code == 200 && total > 0) ? (uint32_t)total : 0;
-  ESP_LOGI(TAG, "check: image publiée %s (%s)", out.version, out.date);
-  store_latest(out);
+  ESP_LOGI(TAG, "check: dernière release %s", rel.tag);
+  store_latest(rel);
   return true;
 }
 
-// Boucle OTA à handle : permet de reporter la progression. L'URL est en https
-// (HA ne sert que du TLS sur son port) mais aucun certificat n'est configuré :
-// c'est CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY qui rend la connexion possible.
-// Attacher le bundle de certificats ne marcherait PAS tant que settings::host
-// est une IP : le certificat du serveur porte un nom DNS, et la vérification
-// d'identité échouerait.
+// Boucle OTA à handle : permet de reporter la progression. Certificat vérifié
+// (bundle de l'IDF) : la seule source HTTP est désormais un asset de release
+// GitHub, qui redirige vers son stockage — esp_https_ota suit la redirection.
 esp_err_t do_ota(const char *url) {
   esp_http_client_config_t http = {};
   http.url = url;
   http.timeout_ms = 10000;
   http.keep_alive_enable = true;
+  http.crt_bundle_attach = esp_crt_bundle_attach;
+  http.user_agent = cfg::kHttpUserAgent;
+  // L'URL de l'asset GitHub et sa redirection signée dépassent le tampon
+  // d'en-têtes par défaut (512 o).
+  http.buffer_size = 2048;
+  http.buffer_size_tx = 2048;
 
   esp_https_ota_config_t ota = {};
   ota.http_config = &http;
@@ -204,6 +210,18 @@ esp_err_t do_ota(const char *url) {
   if (err != ESP_OK || handle == nullptr) {
     report("error: begin");
     return err != ESP_OK ? err : ESP_FAIL;
+  }
+
+  // Avant d'écrire quoi que ce soit : refuser une image d'un autre projet.
+  esp_app_desc_t incoming = {};
+  const esp_app_desc_t *self = esp_app_get_description();
+  if (esp_https_ota_get_img_desc(handle, &incoming) != ESP_OK ||
+      (self != nullptr &&
+       strncmp(incoming.project_name, self->project_name,
+               sizeof incoming.project_name) != 0)) {
+    esp_https_ota_abort(handle);
+    report("error: other project");
+    return ESP_FAIL;
   }
 
   int total = esp_https_ota_get_image_size(handle);
@@ -356,12 +374,11 @@ void ota_task(void *arg) {
   for (;;) {
     // Le délai d'attente EST la vérification périodique : pas de timer de plus.
     if (xSemaphoreTake(s_req_sem, kCheckPeriod) != pdTRUE &&
-        s_check_url.load() != nullptr) {
+        s_check_enabled.load()) {
       s_check_pending.store(true);
     }
     if (s_check_pending.exchange(false)) {
-      const char *url = s_check_url.load();
-      if (url != nullptr && !(s_is_busy && s_is_busy()) && do_check(url)) {
+      if (!(s_is_busy && s_is_busy()) && do_check()) {
         notify_changed();
       }
     }
@@ -399,6 +416,8 @@ void init(bool (*is_busy)(), void (*report_fn)(const char *msg),
   s_report = report_fn;
   s_changed = changed;
   // Avant la tâche : elle publie un statut dès son premier réveil.
+  snprintf(s_api_url, sizeof s_api_url,
+           "https://api.github.com/repos/%s/releases/latest", cfg::kGithubRepo);
   s_status_mtx = xSemaphoreCreateMutex();
   if (s_status_mtx == nullptr) {
     ESP_LOGE(TAG, "mutex de statut OTA non créé : lecture non protégée");
@@ -509,16 +528,30 @@ bool in_progress() { return s_in_progress.load(); }
 
 int progress() { return s_in_progress.load() ? s_progress.load() : -1; }
 
-void request_check(const char *url) {
-  if (url == nullptr || url[0] == '\0' || s_req_sem == nullptr) {
+void request_check() {
+  if (s_req_sem == nullptr) {
     return;
   }
-  s_check_url.store(url);
+  s_check_enabled.store(true);
   s_check_pending.store(true);
   xSemaphoreGive(s_req_sem);
 }
 
-bool latest(ImageInfo *out) {
+bool request_latest() {
+  github_release::Release rel = {};
+  if (!latest(&rel) || rel.tag[0] == '\0') {
+    report("fail: no release known");
+    return false;
+  }
+  if (s_in_progress.load()) {
+    report("busy: already in progress");
+    return false;
+  }
+  request(rel.asset_url);
+  return true;
+}
+
+bool latest(github_release::Release *out) {
   if (out == nullptr) {
     return false;
   }

@@ -43,7 +43,8 @@ struct UpdateState {
   char current[32] = {};
   char latest[32] = {};
   char title[48] = {};
-  char summary[128] = {}; // release notes shown by HA
+  char summary[256] = {};     // release notes shown by HA (<= 255 bytes)
+  char release_url[160] = {}; // "Read release announcement" link
 };
 
 // One HA entity. Only the members relevant to `kind` are read; the others

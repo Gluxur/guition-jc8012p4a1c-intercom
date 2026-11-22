@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "net/github_release.h"
+
 namespace ota_ctrl {
 
 // is_busy : renvoie true si une session vidéo/micro est active -> OTA refusé
@@ -24,12 +26,15 @@ void request(const char *url);
 // n'importe quel contexte, ignoré si un OTA est déjà en cours.
 void request_file(const char *path);
 
-// Demande à la tâche OTA de lire l'en-tête de l'image publiée à `url` (une
-// requête Range de 144 octets, pas le téléchargement) pour en connaître la
-// version. `url` doit vivre jusqu'à la fin du programme (les URLs de
-// settings::). Non bloquant ; refait ensuite seul toutes les 6 h. Sauté
+// Demande à la tâche OTA d'interroger la dernière release GitHub du projet
+// (cfg::kGithubRepo). Non bloquant ; refait ensuite seul toutes les 6 h. Sauté
 // pendant un appel : un handshake TLS réclame de la SRAM interne.
-void request_check(const char *url);
+void request_check();
+
+// Installe l'asset de la dernière release connue. False si aucune release
+// n'est connue (pas encore vérifié, dépôt sans release) ou si un OTA est déjà
+// en cours.
+bool request_latest();
 
 // Métadonnées lues dans l'en-tête d'un .bin, pour que l'interface affiche ce
 // qu'elle s'apprête à flasher.
@@ -61,9 +66,8 @@ void status(char *out, size_t cap);
 [[nodiscard]] int progress();
 
 // Résultat de la dernière vérification. false tant qu'aucune n'a abouti ;
-// true avec out->version vide quand le serveur n'a pas d'image (404) ou que
-// l'image publiée est celle d'un autre projet. Sûr depuis n'importe quelle
-// tâche (copie sous verrou).
-[[nodiscard]] bool latest(ImageInfo *out);
+// true avec out->tag vide quand le dépôt n'a pas de release (404, ou dépôt
+// privé). Sûr depuis n'importe quelle tâche (copie sous verrou).
+[[nodiscard]] bool latest(github_release::Release *out);
 
 } // namespace ota_ctrl

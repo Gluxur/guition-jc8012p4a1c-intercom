@@ -66,7 +66,6 @@ inline constexpr const char *kHost = APP_SECRET_HOST;
 
 // --- Ports des services (mêmes valeurs sur toutes les installations) --------
 inline constexpr int kGo2rtcPort = 1984;
-inline constexpr int kHaPort = 8123;
 
 // --- Flux go2rtc -----------------------------------------------------------
 // WebRTC ne sert plus qu'à l'audio : flux audio-only pour que go2rtc n'envoie
@@ -96,8 +95,15 @@ inline constexpr const char *kHaCalendarEntity = APP_SECRET_HA_CALENDAR_ENTITY;
 inline constexpr const char *kHaGateEntity = APP_SECRET_HA_GATE_ENTITY;
 // Ces trois identifiants ne sont que des défauts de premier démarrage : la
 // valeur effective vient de prefs::ha_entity(), éditable depuis HA.
-// Chemin du firmware servi par HA, proposé comme payload du bouton OTA.
-inline constexpr const char *kOtaFirmwarePath = "/local/fw.bin";
+// --- Mises à jour : releases GitHub du projet -------------------------------
+// Un fork change kGithubRepo pour recevoir SES releases. Seul l'asset portant
+// exactement ce nom, sous https://github.com/<repo>/releases/download/, est
+// installable (net/github_release).
+inline constexpr const char *kGithubRepo = "Gluxur/guition-jc8012p4a1c-intercom";
+inline constexpr const char *kGithubAsset = "esp32_p4_webrtc_cam.bin";
+// GitHub refuse les requêtes sans User-Agent. Générique : rien qui identifie
+// l'installation.
+inline constexpr const char *kHttpUserAgent = "esp32-intercom";
 
 // Fuseau POSIX (Europe/Paris, bascule été/hiver par la libc) et serveur SNTP.
 inline constexpr const char *kTimezone = "CET-1CEST,M3.5.0,M10.5.0/3";

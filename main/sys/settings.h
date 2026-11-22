@@ -45,6 +45,5 @@ bool save(const Config &cfg);
 [[nodiscard]] const char *go2rtc_audio_url();
 [[nodiscard]] const char *go2rtc_mic_url();
 [[nodiscard]] const char *go2rtc_mjpeg2_url(); // flux vidéo de la page caméra
-[[nodiscard]] const char *ota_firmware_url(); // proposé au bouton OTA de HA
 
 } // namespace settings

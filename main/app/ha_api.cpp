@@ -222,11 +222,8 @@ void p_presence_snapshot() { presence::request_snapshot(); }
 
 void p_ota_sd() { ota_ctrl::request_file(cfg::kOtaSdDefaultPath); }
 
-// The image Home Assistant serves from /config/www/fw.bin. Only the
-// configured host can serve firmware: the URL is built here, never received.
-// Firmware update entity. The image HA offers is whatever sits in
-// /config/www/fw.bin: its version is read from the image header (a 144-byte
-// Range request), no manifest to keep in sync with the binary.
+// Firmware update entity: HA offers the latest GitHub release of
+// cfg::kGithubRepo (tag, notes, link). Comparing versions is HA's job.
 void g_update(esphome_api::UpdateState *u) {
   const esp_app_desc_t *d = esp_app_get_description();
   snprintf(u->current, sizeof u->current, "%s", d ? d->version : "unknown");
@@ -234,25 +231,25 @@ void g_update(esphome_api::UpdateState *u) {
   u->in_progress = ota_ctrl::in_progress();
   const int pct = ota_ctrl::progress();
   u->progress = pct >= 0 ? (float)pct : -1.0f;
-  ota_ctrl::ImageInfo img = {};
-  if (ota_ctrl::latest(&img) && img.version[0] != '\0') {
-    snprintf(u->latest, sizeof u->latest, "%s", img.version);
-    snprintf(u->summary, sizeof u->summary, "/local/fw.bin: %s, built %s",
-             img.version, img.date);
+  github_release::Release rel = {};
+  if (ota_ctrl::latest(&rel) && rel.tag[0] != '\0') {
+    snprintf(u->latest, sizeof u->latest, "%s", rel.tag);
+    snprintf(u->summary, sizeof u->summary, "%s", rel.notes);
+    snprintf(u->release_url, sizeof u->release_url, "%s", rel.html_url);
   }
 }
 
 void c_update(bool install) {
   if (install) {
-    ota_ctrl::request(settings::ota_firmware_url());
+    (void)ota_ctrl::request_latest();
   } else {
-    ota_ctrl::request_check(settings::ota_firmware_url());
+    ota_ctrl::request_check();
   }
 }
 
-// Each (re)connection of HA: look for a newer image right away; ota_ctrl then
-// re-checks every 6 h on its own.
-void on_ha_ready() { ota_ctrl::request_check(settings::ota_firmware_url()); }
+// Each (re)connection of HA: look for a newer release right away; ota_ctrl
+// then re-checks every 6 h on its own.
+void on_ha_ready() { ota_ctrl::request_check(); }
 
 // --- Sensors -------------------------------------------------------------------
 

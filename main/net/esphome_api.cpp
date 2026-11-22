@@ -501,7 +501,7 @@ uint16_t encode_state(const Entity &e, esphome_pb::Writer &w) {
     if (e.get_update == nullptr) {
       return 0;
     }
-    // Static: 250 B is a big bite of the 12 KB server stack, and only the
+    // Static: ~600 B is a big bite of the 12 KB server stack, and only the
     // server task ever encodes.
     static UpdateState u;
     u = UpdateState{};
@@ -519,6 +519,7 @@ uint16_t encode_state(const Entity &e, esphome_pb::Writer &w) {
     w.str(7, u.latest[0] != '\0' ? u.latest : u.current);
     w.str(8, u.title);
     w.str(9, u.summary);
+    w.str(10, u.release_url);
     return kUpdateState;
   }
   }

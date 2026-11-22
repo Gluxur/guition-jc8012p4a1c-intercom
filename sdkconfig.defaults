@@ -54,13 +54,6 @@ CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 # LVGL font support for home/camera screens (Task 1: Screens + buttons)
 CONFIG_LV_FONT_MONTSERRAT_24=y
 
-# Home Assistant local (https://192.168.1.x:8123) : certificat non signé par
-# une CA publique — esp-tls refuse toute connexion TLS sans option de
-# vérification (ESP_ERR_MBEDTLS_SSL_SETUP_FAILED). Autorise VERIFY_NONE quand
-# aucun certificat n'est fourni dans esp_tls_cfg_t. Réseau LAN uniquement.
-CONFIG_ESP_TLS_INSECURE=y
-CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
-
 # Console primaire = USB Serial JTAG, PAS l'UART0.
 # ESP_LOGx écrit de façon bloquante : sur UART0 à 115200 bauds (8N1), un octet
 # coûte 86,8 µs, donc une ligne de 100 caractères gèle la tâche appelante
@@ -346,3 +339,10 @@ CONFIG_MBEDTLS_CHACHAPOLY_C=y
 # SRAM is what DTLS needs during a call (cf. CLAUDE.md, SRAM vs PSRAM).
 CONFIG_MDNS_TASK_CREATE_FROM_SPIRAM=y
 CONFIG_MDNS_MEMORY_ALLOC_SPIRAM=y
+
+# Every TLS connection verifies the server certificate (IDF bundle). The skip
+# existed only for the firmware image served by Home Assistant on an IP
+# address; updates now come from GitHub releases. Keep it off: the repository
+# is public, and an unverified OTA source would let anyone on the network path
+# push their own firmware.
+# CONFIG_ESP_TLS_INSECURE is not set
