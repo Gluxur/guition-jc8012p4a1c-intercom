@@ -14,7 +14,11 @@ from jinja2 import StrictUndefined
 
 def c_template(path):
     src = open(path, encoding='utf-8').read()
-    m = re.search(r'static void build_template\(char \*out, size_t cap\) \{\s*snprintf\(out, cap,(.*?),\s*cfg::', src, re.S)
+    # build_template(const char *entity, char *out, size_t cap): the format
+    # string runs from snprintf's `cap,` to the `entity)` argument.
+    m = re.search(r'static void build_template\(const char \*entity, char \*out, size_t cap\) \{\s*snprintf\(out, cap,(.*?),\s*entity\);', src, re.S)
+    if m is None:
+        sys.exit(path + ': build_template() not found: update this parser with its new signature')
     parts = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
     t = ''.join(parts)
     return t
