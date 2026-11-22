@@ -95,4 +95,15 @@ Look look(State s, bool configured, bool ha_connected, bool failed) {
   return kUnavailableLook;
 }
 
+bool accept_state(const char *watched_id, const char *entity_id,
+                  const char *attribute) {
+  if (watched_id == nullptr || entity_id == nullptr || watched_id[0] == 0) {
+    return false;
+  }
+  if (attribute != nullptr && attribute[0] != 0) {
+    return false;
+  }
+  return strcmp(watched_id, entity_id) == 0;
+}
+
 } // namespace gate_logic

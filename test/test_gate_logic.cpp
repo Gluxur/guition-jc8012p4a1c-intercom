@@ -88,3 +88,11 @@ TEST(GateLogic, LookUnconfigured) {
   ExpectLook(gate_logic::look(State::kOpen, false, true, true), "Portail", "",
              "à configurer dans HA", Tone::kOff, false);
 }
+
+TEST(GateLogic, StateForOtherEntityIgnored) {
+  EXPECT_FALSE(gate_logic::accept_state("cover.a", "cover.b", ""));
+  EXPECT_TRUE(gate_logic::accept_state("cover.a", "cover.a", ""));
+  EXPECT_TRUE(gate_logic::accept_state("cover.a", "cover.a", nullptr));
+  EXPECT_FALSE(gate_logic::accept_state("cover.a", "cover.a", "current_position"));
+  EXPECT_FALSE(gate_logic::accept_state("", "", ""));
+}

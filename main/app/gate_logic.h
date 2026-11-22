@@ -38,4 +38,10 @@ struct Look {
 // Precedence: not configured > HA disconnected > last command failed > state.
 [[nodiscard]] Look look(State s, bool configured, bool ha_connected, bool failed);
 
+// True iff a state pushed by HA belongs to the watched gate: same id, and the
+// state itself (no attribute). HA keeps sending a replaced id until it
+// reconnects; those must not move the button.
+[[nodiscard]] bool accept_state(const char *watched_id, const char *entity_id,
+                                const char *attribute);
+
 } // namespace gate_logic
