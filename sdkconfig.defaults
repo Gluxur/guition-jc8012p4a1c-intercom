@@ -98,9 +98,10 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # Anti-brique : la nouvelle image boote en PENDING_VERIFY ; si elle ne se
 # déclare pas valide (wifi+mqtt OK), le bootloader revient à l'ancien slot.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
-# esp_https_ota accepte une URL http:// (binaire hébergé sur HA en LAN, pas de
-# TLS -> économise ~40K SRAM interne, déjà tendue par la pile WebRTC).
-CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+# esp_https_ota refuses http:// URLs: the only HTTP OTA source is a GitHub
+# release asset over verified TLS. (It used to allow http:// for an image
+# served by Home Assistant on the LAN.)
+# CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP is not set
 
 # Débit du flux MJPEG entrant : le plafond n'était ni la radio (RSSI -55 dBm) ni
 # le CPU (drop=0, rendu à 32 fps de capacité) mais la fenêtre de réception TCP.

@@ -81,7 +81,13 @@ How it works:
   A private repository answers 404, and the entity then shows no update.
 
 A fork changes `cfg::kGithubRepo` in `main/app_config.h` to receive its own
-releases. Builds of your own that are not released go through the SD card or
+releases.
+
+**Publishing a release.** Attach the `esp32_p4_webrtc_cam.bin` built by CI
+on the tag (the "Firmware build" artifact of the tag's run). Its embedded
+version is the tag, e.g. `v2.1.0`. After installing, HA then sees installed
+== latest and shows "up to date". An image built elsewhere (`v2.1.0-dirty`,
+a bare hash) would keep being offered after every install. Builds of your own that are not released go through the SD card or
 the file server (above).
 
 There is no ESPHome dashboard "Install": the dashboard compiles a YAML with

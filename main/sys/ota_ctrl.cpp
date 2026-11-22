@@ -174,6 +174,13 @@ bool do_check() {
       return false;
     }
   }
+  // A read cut short (Wi-Fi hiccup, timeout) must not erase a known release:
+  // the partial JSON would fail to parse and HA would say "up to date".
+  if (!esp_http_client_is_complete_data_received(client.get())) {
+    ESP_LOGW(TAG, "check: réponse incomplète (%u o), release connue gardée",
+             (unsigned)got);
+    return false;
+  }
   buf.get()[got] = '\0';
   github_release::Release rel = {};
   if (!github_release::parse_latest(buf.get(), cfg::kGithubRepo,
