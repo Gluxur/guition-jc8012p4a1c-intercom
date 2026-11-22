@@ -39,6 +39,10 @@
 #ifndef APP_SECRET_HA_CALENDAR_ENTITY
 #define APP_SECRET_HA_CALENDAR_ENTITY "calendar.home"
 #endif
+// Empty = no gate button until one is set on the HA device page.
+#ifndef APP_SECRET_HA_GATE_ENTITY
+#define APP_SECRET_HA_GATE_ENTITY ""
+#endif
 
 namespace cfg {
 
@@ -88,6 +92,10 @@ inline constexpr const char *kHaWeatherEntity = APP_SECRET_HA_WEATHER_ENTITY;
 // Calendar native de Home Assistant (entité calendar.*), pas d'OAuth Google
 // sur la cible.
 inline constexpr const char *kHaCalendarEntity = APP_SECRET_HA_CALENDAR_ENTITY;
+// Portail (entité cover.*) piloté depuis les écrans accueil / météo / caméra.
+inline constexpr const char *kHaGateEntity = APP_SECRET_HA_GATE_ENTITY;
+// Ces trois identifiants ne sont que des défauts de premier démarrage : la
+// valeur effective vient de prefs::ha_entity(), éditable depuis HA.
 // Chemin du firmware servi par HA, proposé comme payload du bouton OTA.
 inline constexpr const char *kOtaFirmwarePath = "/local/fw.bin";
 

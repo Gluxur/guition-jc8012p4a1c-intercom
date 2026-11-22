@@ -7,7 +7,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "app/ha_entity_id.h"
 #include "net/esphome_api.h"
+#include "sys/prefs.h"
 #include "sys/mutex.h"
 #include <atomic>
 #include <cstdio>
@@ -49,7 +51,7 @@ static void (*s_done_cb)(bool) = nullptr;
 // receives only what it displays (7 days, 4 attributes) and no second request
 // is needed for the entity state. The result is a dict, which HA sends back as
 // JSON under "response".
-static void build_template(char *out, size_t cap) {
+static void build_template(const char *entity, char *out, size_t cap) {
   snprintf(out, cap,
            "{%% set e = '%s' %%}"
            "{{ {'forecast': response[e].forecast[:7],"
@@ -58,7 +60,7 @@ static void build_template(char *out, size_t cap) {
            "'humidity': state_attr(e, 'humidity'),"
            "'pressure': state_attr(e, 'pressure'),"
            "'wind_speed': state_attr(e, 'wind_speed')}}} }}",
-           cfg::kHaWeatherEntity);
+           entity);
 }
 
 static bool do_fetch() {
@@ -68,10 +70,18 @@ static bool do_fetch() {
     ESP_LOGE(TAG, "alloc buffer réponse échouée");
     return false;
   }
+  // Read per fetch: the id is edited live from the HA device page.
+  char entity[ha_entity_id::kMax];
+  prefs::ha_entity(prefs::HaEntity::kWeather, entity, sizeof entity);
+  if (entity[0] == '\0') {
+    ESP_LOGW(TAG, "entité non configurée (page de l'appareil dans HA)");
+    heap_caps_free(resp);
+    return false;
+  }
   char tmpl[512];
-  build_template(tmpl, sizeof tmpl);
+  build_template(entity, tmpl, sizeof tmpl);
   const esphome_api::Kv data[] = {
-      {"entity_id", cfg::kHaWeatherEntity},
+      {"entity_id", entity},
       {"type", "daily"},
   };
   size_t len = 0;

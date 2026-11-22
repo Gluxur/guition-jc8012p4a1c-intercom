@@ -1,10 +1,15 @@
 #include "prefs.h"
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 #include "nvs.h"
+
+#include "app/ha_entity_id.h"
+#include "app_config.h"
 
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 
 namespace prefs {
 
@@ -21,6 +26,9 @@ constexpr char kRingFileKey[] = "ring_file";
 constexpr char kFileSrvKey[] = "filesrv";
 constexpr char kEchoKey[] = "echo";
 constexpr char kThemeKey[] = "theme";
+// Indexées par HaEntity. <= 15 caractères (limite NVS).
+constexpr const char *kEntityKeys[] = {"ent_gate", "ent_weather", "ent_cal"};
+constexpr size_t kEntityCount = sizeof(kEntityKeys) / sizeof(kEntityKeys[0]);
 
 // Écrit par la tâche LVGL (page Configuration), lu par la tâche de l'API
 // (déclencheur de sonnerie) : atomique, jamais volatile.
@@ -60,6 +68,25 @@ std::atomic<UiTheme> s_theme{UiTheme::kVice};
 // chemin de chargement, pour une course que l'IHM rend impossible.
 char s_ring_file[kRingFileMax] = "ring.wav";
 
+// Écrits par la tâche de l'API, lus par les tâches de fetch et par app/gate :
+// copie sous spinlock (64 octets au plus, aucun appel bloquant dedans). Un
+// spinlock plutôt qu'un mutex : il existe dès l'initialisation statique, donc
+// aucun lecteur ne peut arriver avant lui.
+char s_entities[kEntityCount][ha_entity_id::kMax] = {};
+portMUX_TYPE s_entities_mux = portMUX_INITIALIZER_UNLOCKED;
+std::atomic<uint32_t> s_entities_gen{0};
+
+const char *entity_default(size_t i) {
+  switch (i) {
+  case 0:
+    return cfg::kHaGateEntity;
+  case 1:
+    return cfg::kHaWeatherEntity;
+  default:
+    return cfg::kHaCalendarEntity;
+  }
+}
+
 // Écrit une fois depuis app_main, lu par la tâche d'écriture SD : atomique,
 // par cohérence avec s_dnd.
 std::atomic<uint32_t> s_boot_count{0};
@@ -67,9 +94,22 @@ std::atomic<uint32_t> s_boot_count{0};
 } // namespace
 
 void init() {
+  // Défauts d'abord : ils restent si le namespace n'a jamais été écrit.
+  for (size_t i = 0; i < kEntityCount; i++) {
+    snprintf(s_entities[i], sizeof s_entities[i], "%s", entity_default(i));
+  }
   nvs_handle_t handle;
   if (nvs_open(kNamespace, NVS_READONLY, &handle) != ESP_OK) {
     return; // namespace jamais écrit : défaut (DND inactif)
+  }
+  for (size_t i = 0; i < kEntityCount; i++) {
+    char buf[ha_entity_id::kMax];
+    size_t n = sizeof buf;
+    // Pas encore de lecteur à ce stade (init est appelé avant les tâches) :
+    // l'écriture directe est sûre.
+    if (nvs_get_str(handle, kEntityKeys[i], buf, &n) == ESP_OK) {
+      snprintf(s_entities[i], sizeof s_entities[i], "%s", buf);
+    }
   }
   uint8_t val = 0;
   if (nvs_get_u8(handle, kDndKey, &val) == ESP_OK) {
@@ -164,6 +204,45 @@ void set_ring_volume(uint8_t percent) {
   nvs_commit(handle);
   nvs_close(handle);
 }
+
+void ha_entity(HaEntity which, char *out, size_t cap) {
+  const size_t i = static_cast<size_t>(which);
+  if (out == nullptr || cap == 0) {
+    return;
+  }
+  if (i >= kEntityCount) {
+    out[0] = '\0';
+    return;
+  }
+  char copy[ha_entity_id::kMax];
+  taskENTER_CRITICAL(&s_entities_mux);
+  memcpy(copy, s_entities[i], sizeof copy);
+  taskEXIT_CRITICAL(&s_entities_mux);
+  snprintf(out, cap, "%s", copy);
+}
+
+void set_ha_entity(HaEntity which, const char *normalized) {
+  const size_t i = static_cast<size_t>(which);
+  if (i >= kEntityCount || normalized == nullptr) {
+    return;
+  }
+  char copy[ha_entity_id::kMax];
+  snprintf(copy, sizeof copy, "%s", normalized);
+  taskENTER_CRITICAL(&s_entities_mux);
+  memcpy(s_entities[i], copy, sizeof copy);
+  taskEXIT_CRITICAL(&s_entities_mux);
+  s_entities_gen.fetch_add(1);
+  nvs_handle_t handle;
+  if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open %s en écriture : réglage non persisté", kNamespace);
+    return;
+  }
+  nvs_set_str(handle, kEntityKeys[i], copy);
+  nvs_commit(handle);
+  nvs_close(handle);
+}
+
+uint32_t ha_entities_generation() { return s_entities_gen.load(); }
 
 const char *ring_file() { return s_ring_file; }
 

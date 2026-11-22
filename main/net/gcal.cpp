@@ -8,7 +8,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sys/mutex.h"
+#include "app/ha_entity_id.h"
 #include "net/esphome_api.h"
+#include "sys/prefs.h"
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -51,7 +53,7 @@ static void format_utc(int64_t epoch_s, char *dst, size_t cap) {
 // for a timed event, "2026-07-30" for an all-day one. The template turns that
 // into the layout gcal_parse already decodes (REST API: {"dateTime"|"date"}),
 // and drops description/location, which the screen never shows.
-static void build_template(char *out, size_t cap) {
+static void build_template(const char *entity, char *out, size_t cap) {
   snprintf(out, cap,
            "{%% set ns = namespace(l=[]) %%}"
            "{%% for ev in response['%s'].events %%}"
@@ -59,7 +61,7 @@ static void build_template(char *out, size_t cap) {
            "{%% set ns.l = ns.l + [{'summary': ev.get('summary', ''),"
            " 'start': {k: ev['start']}, 'end': {k: ev['end']}}] %%}"
            "{%% endfor %%}{{ ns.l }}",
-           cfg::kHaCalendarEntity);
+           entity);
 }
 
 static bool do_fetch(int64_t range_start_s, int64_t range_end_s) {
@@ -72,10 +74,18 @@ static bool do_fetch(int64_t range_start_s, int64_t range_end_s) {
     ESP_LOGE(TAG, "alloc buffer réponse échouée");
     return false;
   }
+  // Read per fetch: the id is edited live from the HA device page.
+  char entity[ha_entity_id::kMax];
+  prefs::ha_entity(prefs::HaEntity::kCalendar, entity, sizeof entity);
+  if (entity[0] == '\0') {
+    ESP_LOGW(TAG, "entité non configurée (page de l'appareil dans HA)");
+    heap_caps_free(resp);
+    return false;
+  }
   char tmpl[512];
-  build_template(tmpl, sizeof tmpl);
+  build_template(entity, tmpl, sizeof tmpl);
   const esphome_api::Kv data[] = {
-      {"entity_id", cfg::kHaCalendarEntity},
+      {"entity_id", entity},
       {"start_date_time", start_str},
       {"end_date_time", end_str},
   };

@@ -13,6 +13,7 @@
 #include "net/weather.h"
 #include "net/wifi_net.h"
 #include "net/esphome_api.h"
+#include "sys/prefs.h"
 #include "theme.h"
 #include <cmath>
 #include <cstdio>
@@ -551,6 +552,13 @@ static void update_net_locked() {
     s_ha_shown = ha;
     lv_obj_set_style_text_color(s_net_ha,
                                 lv_color_hex(ha ? kNetOk : kNetKo), 0);
+  }  // Weather or calendar entity id edited from the HA device page: show the
+  // new source now rather than at the next 30-min refresh.
+  static uint32_t s_ids_gen = prefs::ha_entities_generation();
+  const uint32_t gen = prefs::ha_entities_generation();
+  if (gen != s_ids_gen) {
+    s_ids_gen = gen;
+    refresh_timer_cb(nullptr);
   }
 }
 

@@ -11,6 +11,7 @@
 // Namespace NVS propre (`ui_prefs`) : ni celui de settings (`net_cfg`) ni
 // celui du BSP (`audio_cfg`).
 #include <cstddef>
+#include <cstddef>
 #include <cstdint>
 
 namespace prefs {
@@ -109,6 +110,23 @@ enum class UiTheme : uint8_t { kClassic = 0, kVice = 1 };
 
 // Persiste. L'effet n'est visible qu'après redémarrage (cf. ci-dessus).
 void set_ui_theme(UiTheme theme);
+
+// Identifiants d'entités Home Assistant utilisés par la tablette, éditables
+// depuis la page de l'appareil dans HA (entités texte, app/ha_api). Appliqués
+// à chaud. Clé absente : défaut compilé (cfg::kHa*Entity, surchargeable dans
+// app_secrets.h) ; chaîne vide stockée = entité volontairement non configurée.
+enum class HaEntity : uint8_t { kGate, kWeather, kCalendar };
+
+// Copie sous verrou : écrit par la tâche de l'API, lu par les tâches de fetch
+// météo/agenda et par app/gate. Sûr depuis n'importe quelle tâche.
+void ha_entity(HaEntity which, char *out, size_t cap);
+
+// Persiste et incrémente ha_entities_generation(). La valeur doit déjà être
+// validée (ha_entity_id::normalize).
+void set_ha_entity(HaEntity which, const char *normalized);
+
+// +1 à chaque set_ha_entity : l'écran météo s'en sert pour relancer un fetch.
+[[nodiscard]] uint32_t ha_entities_generation();
 
 // Compteur de démarrages, persisté en NVS. Sert au bandeau écrit en tête de
 // chaque bloc du journal SD : il donne un repère stable pour recoller les

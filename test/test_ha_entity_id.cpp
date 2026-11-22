@@ -50,12 +50,12 @@ TEST(HaEntityId, RejectsNoObject) {
 
 TEST(HaEntityId, RejectsTooLong) {
   std::string out;
-  const std::string at64 = "cover." + std::string(58, 'a');
-  const std::string at63 = "cover." + std::string(57, 'a');
-  ASSERT_EQ(at64.size(), 64u);
-  EXPECT_FALSE(Norm(at64.c_str(), "cover", &out));
-  EXPECT_TRUE(Norm(at63.c_str(), "cover", &out));
-  EXPECT_EQ(out, at63);
+  const std::string at128 = "cover." + std::string(122, 'a');
+  const std::string at127 = "cover." + std::string(121, 'a');
+  ASSERT_EQ(at128.size(), 128u);
+  EXPECT_FALSE(Norm(at128.c_str(), "cover", &out));
+  EXPECT_TRUE(Norm(at127.c_str(), "cover", &out));
+  EXPECT_EQ(out, at127);
 }
 
 TEST(HaEntityId, KeepsOutOnFailure) {

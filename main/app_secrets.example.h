@@ -22,3 +22,7 @@
 // default) and calendar.home.
 #define APP_SECRET_HA_WEATHER_ENTITY "weather.forecast_home"
 #define APP_SECRET_HA_CALENDAR_ENTITY "calendar.home"
+// Gate (cover.*) for the gate button; leave it out for no gate button.
+#define APP_SECRET_HA_GATE_ENTITY "cover.my_gate"
+// These are first-boot defaults only: once the board runs, the three ids are
+// edited from its device page in Home Assistant ("Entite ..." text fields).

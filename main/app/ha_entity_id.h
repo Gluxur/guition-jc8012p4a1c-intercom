@@ -7,7 +7,9 @@
 namespace ha_entity_id {
 
 // Buffer size for a stored id, NUL included: ids are < kMax characters.
-inline constexpr size_t kMax = 64;
+// 128 and not 64: integration-generated ids get long (a Meteo-France entity
+// measured 94 characters).
+inline constexpr size_t kMax = 128;
 
 // Trims ASCII spaces. Empty result -> out = "" and true (the entity is unset).
 // Otherwise true iff the value is "<domain>.<object>" with a non-empty
