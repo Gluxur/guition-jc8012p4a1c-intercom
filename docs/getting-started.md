@@ -28,7 +28,7 @@ From an ESP-IDF shell (where `idf.py` is on the `PATH`):
 
 ```bash
 git clone <this repository>
-cd esp32-p4-video-intercom
+cd guition-jc8012p4a1c-intercom
 idf.py build
 ```
 

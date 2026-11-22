@@ -41,7 +41,7 @@ constexpr uint32_t kApiMinor = 13;
 // action responses, which HA must believe we support.
 constexpr const char *kEsphomeVersion = "2025.10.0";
 constexpr const char *kModel = "Guition JC8012P4A1C (ESP32-P4)";
-constexpr const char *kProjectName = "gluxur.esp32-p4-video-intercom";
+constexpr const char *kProjectName = "gluxur.guition-jc8012p4a1c-intercom";
 constexpr const char *kNoiseName = "Noise_NNpsk0_25519_ChaChaPoly_SHA256";
 
 constexpr size_t kMaxHandshakeFrame = 128; // same limit as ESPHome
