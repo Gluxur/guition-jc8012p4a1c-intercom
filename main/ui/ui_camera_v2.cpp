@@ -436,7 +436,12 @@ static void gate_refresh(bool force) {
       lv_obj_add_state(s_gate_btn, LV_STATE_DISABLED);
     }
   }
-  s_band_dirty.store(true, std::memory_order_relaxed);
+  // Recomposer coûte un lv_snapshot 1280x80 + un blend dans lvgl_task, et
+  // alloue le scratch de 448 Ko : seulement si l'écran caméra est affiché.
+  // Sinon prepare_stream() recompose à l'ouverture.
+  if (lv_screen_active() == s_scr) {
+    s_band_dirty.store(true, std::memory_order_relaxed);
+  }
 }
 
 static void cb_gate(lv_event_t *e) {
