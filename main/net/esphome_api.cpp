@@ -435,6 +435,7 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
     w.str(5, e.icon);
     w.u32(7, cat);
     w.u32(9, e.max_len);
+    w.str(10, e.pattern);
     // mode 11 = TEXT_MODE_TEXT = 0: omitted (proto3 default)
     return kListText;
   }

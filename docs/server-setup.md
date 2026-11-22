@@ -182,8 +182,8 @@ section: **Entite portail**, **Entite meteo**, **Entite agenda**. Type the full
 entity id (`cover.my_gate`, `weather.forecast_home`, `calendar.home`). A
 change applies at once, no reboot; the value is stored on the board.
 
-- An id with the wrong domain or with capitals is refused, and the field
-  snaps back to the stored value.
+- An id with the wrong domain or with capitals is refused by HA itself
+  (each field carries a pattern), with an error message; nothing is stored.
 - An empty gate field means "no gate": the button disappears.
 - On a fresh board the fields start from the `APP_SECRET_HA_*_ENTITY` values
   of `main/app_secrets.h`, if any.

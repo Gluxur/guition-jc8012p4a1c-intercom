@@ -83,8 +83,11 @@ struct Entity {
   // update_cmd(false) = check for a new version.
   void (*get_update)(UpdateState *out) = nullptr;
   void (*update_cmd)(bool install) = nullptr;
-  // kText: longest value HA lets the user type (get_text / set_text).
+  // kText: longest value HA lets the user type (get_text / set_text), and an
+  // optional regex HA checks before sending (text.set_value refuses with an
+  // error otherwise).
   uint8_t max_len = 64;
+  const char *pattern = nullptr;
   // get_*() reads the SD card: skipped while `Config::busy` says so.
   bool sd_touching = false;
   // Still refreshed every 30 s while `Config::busy` (e.g. the in-call state).

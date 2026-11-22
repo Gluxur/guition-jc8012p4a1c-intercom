@@ -2,6 +2,7 @@
 
 #include "app/ha_entity_id.h"
 
+#include <regex>
 #include <string>
 
 namespace {
@@ -62,4 +63,34 @@ TEST(HaEntityId, KeepsOutOnFailure) {
   std::string out;
   EXPECT_FALSE(Norm("light.x", "cover", &out));
   EXPECT_EQ(out, "keep");
+}
+
+// HA validates text.set_value against the entity's `pattern` (Python re.match)
+// and refuses with an error; the firmware's normalize() is the second guard.
+// Both must agree, or HA accepts what the board then silently drops.
+TEST(HaEntityId, PatternAgreesWithNormalize) {
+  struct Case {
+    const char *domain;
+    const char *pattern;
+  };
+  const Case cases[] = {
+      {"cover", ha_entity_id::kCoverPattern},
+      {"weather", ha_entity_id::kWeatherPattern},
+      {"calendar", ha_entity_id::kCalendarPattern},
+  };
+  const char *inputs[] = {
+      "",          "   ",          " cover.portail ", "cover.portail",
+      "Cover.Portail", "light.x",  "cover.",          "cover",
+      "cover.port-ail", "cover.a b", "weather.forecast_home",
+      "calendar.home", "coverx.y", "cover.x_1",
+  };
+  for (const Case &c : cases) {
+    const std::regex re(c.pattern);
+    for (const char *in : inputs) {
+      char buf[ha_entity_id::kMax];
+      const bool norm = ha_entity_id::normalize(in, c.domain, buf, sizeof buf);
+      EXPECT_EQ(std::regex_match(in, re), norm)
+          << "domain " << c.domain << " input '" << in << "'";
+    }
+  }
 }

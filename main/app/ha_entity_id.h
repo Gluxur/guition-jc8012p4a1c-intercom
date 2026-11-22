@@ -19,4 +19,14 @@ inline constexpr size_t kMax = 128;
 [[nodiscard]] bool normalize(const char *in, const char *domain, char *out,
                              size_t cap);
 
+// Text entity `pattern` sent to HA (ListEntitiesTextResponse field 10): HA
+// refuses a non-matching text.set_value with an error, so a typo is visible
+// instead of silently dropped. Must accept exactly what normalize() accepts
+// (test/test_ha_entity_id: PatternAgreesWithNormalize). Anchored at both ends:
+// HA uses re.match, which anchors only the start. Length is bounded by the
+// entity's max_length, not here.
+inline constexpr const char *kCoverPattern = "^ *(cover\\.[a-z0-9_]+)? *$";
+inline constexpr const char *kWeatherPattern = "^ *(weather\\.[a-z0-9_]+)? *$";
+inline constexpr const char *kCalendarPattern = "^ *(calendar\\.[a-z0-9_]+)? *$";
+
 } // namespace ha_entity_id
