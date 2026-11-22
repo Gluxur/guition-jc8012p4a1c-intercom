@@ -15,6 +15,8 @@
 
 #include "app/call_history.h"
 #include "app/camera_session.h"
+#include "app/gate.h"
+#include "app/ha_entity_id.h"
 #include "app/presence.h"
 #include "app_config.h"
 #include "bsp.h"
@@ -298,6 +300,44 @@ void g_ota_status(char *o, size_t c) { ota_ctrl::status(o, c); }
 
 bool g_presence() { return presence::present(); }
 
+// --- Entity ids (text fields on the HA device page) --------------------------
+
+// A rejected value changes nothing: the echo that follows every command
+// re-sends the stored id, so HA's field snaps back to it.
+bool set_entity_text(prefs::HaEntity which, const char *domain, const char *in) {
+  char buf[ha_entity_id::kMax];
+  if (!ha_entity_id::normalize(in, domain, buf, sizeof buf)) {
+    ESP_LOGW(TAG, "entité refusée (attendu %s.<id> en minuscules) : %s", domain,
+             in != nullptr ? in : "");
+    return false;
+  }
+  prefs::set_ha_entity(which, buf);
+  ESP_LOGI(TAG, "entité %s : %s", domain, buf[0] ? buf : "(aucune)");
+  return true;
+}
+
+void g_gate_id(char *o, size_t c) { prefs::ha_entity(prefs::HaEntity::kGate, o, c); }
+void g_weather_id(char *o, size_t c) {
+  prefs::ha_entity(prefs::HaEntity::kWeather, o, c);
+}
+void g_calendar_id(char *o, size_t c) {
+  prefs::ha_entity(prefs::HaEntity::kCalendar, o, c);
+}
+
+void s_gate_id(const char *v) {
+  if (set_entity_text(prefs::HaEntity::kGate, "cover", v)) {
+    char id[ha_entity_id::kMax];
+    prefs::ha_entity(prefs::HaEntity::kGate, id, sizeof id);
+    gate::set_entity(id);
+  }
+}
+void s_weather_id(const char *v) {
+  (void)set_entity_text(prefs::HaEntity::kWeather, "weather", v);
+}
+void s_calendar_id(const char *v) {
+  (void)set_entity_text(prefs::HaEntity::kCalendar, "calendar", v);
+}
+
 // --- Table ---------------------------------------------------------------------
 
 // Entity names stay in French: they are what the household reads in HA.
@@ -488,6 +528,32 @@ const Entity kEntities[] = {
      .name = "Version du firmware",
      .category = Category::kDiagnostic,
      .get_text = g_fw},
+    // Entity ids used by the tablet, edited here instead of at build time.
+    // max_len 127: integration-generated ids get long (ha_entity_id::kMax).
+    {.kind = Kind::kText,
+     .object_id = "gate_entity",
+     .name = "Entite portail",
+     .icon = "mdi:gate",
+     .category = Category::kConfig,
+     .get_text = g_gate_id,
+     .set_text = s_gate_id,
+     .max_len = ha_entity_id::kMax - 1},
+    {.kind = Kind::kText,
+     .object_id = "weather_entity",
+     .name = "Entite meteo",
+     .icon = "mdi:weather-partly-cloudy",
+     .category = Category::kConfig,
+     .get_text = g_weather_id,
+     .set_text = s_weather_id,
+     .max_len = ha_entity_id::kMax - 1},
+    {.kind = Kind::kText,
+     .object_id = "calendar_entity",
+     .name = "Entite agenda",
+     .icon = "mdi:calendar",
+     .category = Category::kConfig,
+     .get_text = g_calendar_id,
+     .set_text = s_calendar_id,
+     .max_len = ha_entity_id::kMax - 1},
     // Pushed by ota_ctrl (changed sink in main.cpp) at each progress step and
     // after each check.
     {.kind = Kind::kUpdate,
@@ -547,6 +613,7 @@ void init(const Hooks &hooks) {
   s_cfg.entity_count = sizeof(kEntities) / sizeof(kEntities[0]);
   s_cfg.busy = busy;
   s_cfg.on_ha_ready = on_ha_ready;
+  s_cfg.on_ha_state = gate::on_ha_state;
   if (!esphome_api::start(s_cfg)) {
     ESP_LOGE(TAG, "ESPHome API not started: Home Assistant cannot reach the board");
   }

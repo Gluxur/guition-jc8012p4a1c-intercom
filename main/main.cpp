@@ -10,6 +10,7 @@
 #include "bsp.h"
 
 #include "app_config.h"
+#include "app/gate.h"
 #include "app/audio_pipeline.h"
 #include "app/call_history.h"
 #include "app/camera_session.h"
@@ -414,6 +415,10 @@ extern "C" void app_main(void) {
   // ESPHome native API: mDNS + server on 6053. After Wi-Fi (mDNS registers on
   // the STA netif); the server waits for the link if it is still down.
   ha_api::init({ring_cb});
+  // After ha_api::init: the watch slot must exist before HA's first
+  // subscription request, or the gate's state is only asked for at the next
+  // reconnection.
+  gate::init();
 
   // Caméra de présence AVANT la validation OTA : une image qui planterait dès
   // l'init du CSI ou du capteur doit encore pouvoir revenir en arrière. Après
