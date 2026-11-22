@@ -30,6 +30,15 @@
 #ifndef APP_SECRET_HOST
 #define APP_SECRET_HOST ""
 #endif
+// Entity ids are installation-specific too, and the board cannot discover
+// them: a wrong id makes HA answer "did not match any entities" and the
+// weather page stays on "Chargement".
+#ifndef APP_SECRET_HA_WEATHER_ENTITY
+#define APP_SECRET_HA_WEATHER_ENTITY "weather.forecast_home"
+#endif
+#ifndef APP_SECRET_HA_CALENDAR_ENTITY
+#define APP_SECRET_HA_CALENDAR_ENTITY "calendar.home"
+#endif
 
 namespace cfg {
 
@@ -72,13 +81,13 @@ inline constexpr const char *kGo2rtcMicSrc = "vto_audio_input_only";
 inline constexpr const char *kGo2rtcMjpeg2Src = "vto_mjpeg2";
 
 // --- Home Assistant --------------------------------------------------------
-// À adapter : identifiant de l'entité `weather.*` de votre installation
-// (Paramètres > Entités dans Home Assistant).
-inline constexpr const char *kHaWeatherEntity = "weather.forecast_home";
+// À adapter via `main/app_secrets.h` : identifiant de l'entité `weather.*` de
+// votre installation (Paramètres > Entités dans Home Assistant).
+inline constexpr const char *kHaWeatherEntity = APP_SECRET_HA_WEATHER_ENTITY;
 // Agenda affiché sur la page Météo + la page Agenda. Intégration Google
 // Calendar native de Home Assistant (entité calendar.*), pas d'OAuth Google
 // sur la cible.
-inline constexpr const char *kHaCalendarEntity = "calendar.home";
+inline constexpr const char *kHaCalendarEntity = APP_SECRET_HA_CALENDAR_ENTITY;
 // Chemin du firmware servi par HA, proposé comme payload du bouton OTA.
 inline constexpr const char *kOtaFirmwarePath = "/local/fw.bin";
 

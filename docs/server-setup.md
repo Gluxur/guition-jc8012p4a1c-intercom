@@ -143,9 +143,14 @@ while someone rings.
 ### Weather and calendar
 
 - Weather: any `weather.*` entity that supports `weather.get_forecasts`
-  (daily). Set its ID in `cfg::kHaWeatherEntity`.
+  (daily). Set its ID with `APP_SECRET_HA_WEATHER_ENTITY` in
+  `main/app_secrets.h`.
 - Calendar: any `calendar.*` entity (Google Calendar, CalDAV, local…). Set its
-  ID in `cfg::kHaCalendarEntity`.
+  ID with `APP_SECRET_HA_CALENDAR_ENTITY`.
+
+A wrong ID shows up in the logs as `action failed: Service call requested
+response data but did not match any entities`, and the weather page stays on
+"Chargement".
 
 Both are fetched as **HA actions with a response**, through the API
 connection. The board sends a small Jinja *response template* with each call

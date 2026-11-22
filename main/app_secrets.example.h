@@ -16,3 +16,9 @@
 
 // Machine running go2rtc and Home Assistant.
 #define APP_SECRET_HOST "192.168.1.10"
+
+// Home Assistant entities shown on the weather and agenda pages (Settings >
+// Entities in HA). Defaults: weather.forecast_home (the Met.no integration's
+// default) and calendar.home.
+#define APP_SECRET_HA_WEATHER_ENTITY "weather.forecast_home"
+#define APP_SECRET_HA_CALENDAR_ENTITY "calendar.home"
