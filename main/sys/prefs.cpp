@@ -91,6 +91,33 @@ const char *entity_default(size_t i) {
 // par cohérence avec s_dnd.
 std::atomic<uint32_t> s_boot_count{0};
 
+// First boot of an id: store the compiled default in NVS. Without this the
+// effective id stayed "whatever the running build was compiled with": a board
+// set up with a local build (real ids in app_secrets.h) lost them on its first
+// update to a CI release built with the generic defaults (seen 2026-11-22,
+// v2.1.0). Once stored, only the HA text field changes it.
+void persist_missing_entity_defaults() {
+  nvs_handle_t handle;
+  if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open %s en écriture : entités non figées", kNamespace);
+    return;
+  }
+  bool wrote = false;
+  for (size_t i = 0; i < kEntityCount; i++) {
+    size_t len = 0;
+    const char *def = entity_default(i);
+    if (nvs_get_str(handle, kEntityKeys[i], nullptr, &len) == ESP_ERR_NVS_NOT_FOUND &&
+        def[0] != '\0' && nvs_set_str(handle, kEntityKeys[i], def) == ESP_OK) {
+      ESP_LOGI(TAG, "entité par défaut enregistrée : %s = %s", kEntityKeys[i], def);
+      wrote = true;
+    }
+  }
+  if (wrote) {
+    nvs_commit(handle);
+  }
+  nvs_close(handle);
+}
+
 } // namespace
 
 void init() {
@@ -98,6 +125,7 @@ void init() {
   for (size_t i = 0; i < kEntityCount; i++) {
     snprintf(s_entities[i], sizeof s_entities[i], "%s", entity_default(i));
   }
+  persist_missing_entity_defaults();
   nvs_handle_t handle;
   if (nvs_open(kNamespace, NVS_READONLY, &handle) != ESP_OK) {
     return; // namespace jamais écrit : défaut (DND inactif)
