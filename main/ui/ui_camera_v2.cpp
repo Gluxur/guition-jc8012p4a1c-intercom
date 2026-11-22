@@ -1,3 +1,4 @@
+#include "gate_style.h"
 #include "ui_camera_v2.h"
 
 #include "bsp.h"
@@ -50,6 +51,9 @@ static constexpr int32_t kScrW = 1280;
 static constexpr int32_t kScrH = 800;
 static constexpr int32_t kBandH = 80; // hauteur logique du bandeau
 static constexpr int32_t kBandY = kScrH - kBandH;
+// Pastille d'état : une ligne, ou deux avec les stats (bandeau de 80 px).
+static constexpr int32_t kChipH = 48;
+static constexpr int32_t kChipTallH = 64;
 
 // Le bandeau tourné 90° occupe kBandH colonnes physiques sur toute la hauteur
 // du panneau : 80 x 1280 px RGB565 = 200 Ko par buffer.
@@ -107,6 +111,14 @@ static lv_area_t s_band_phys = {0, 0, 0, 0};
 
 // Dernier rafraîchissement du label de stats (cf. update_stats).
 static int64_t s_stats_last_us = 0;
+
+// Bouton portail, à droite du bandeau. Sa mise à jour ne passe PAS par la
+// fenêtre de 5 s des stats : un changement d'état doit se voir tout de suite
+// (band_timer_cb le relit toutes les 50 ms, un atomique).
+static lv_obj_t *s_gate_btn = nullptr;
+static lv_obj_t *s_gate_lbl = nullptr;
+static uint32_t s_gate_shown = UINT32_MAX;
+static void gate_refresh(bool force);
 
 // --- Composition ------------------------------------------------------------
 
@@ -218,6 +230,7 @@ static bool band_compose() {
 // Tourne dans lvgl_task (déjà sous LvglLock via lv_timer_handler).
 static void band_timer_cb(lv_timer_t *timer) {
   (void)timer;
+  gate_refresh(false);
   if (s_answered) {
     const int32_t min =
         (int32_t)((esp_timer_get_time() - s_answered_at_us) / 60000000);
@@ -315,12 +328,19 @@ void prepare_stream() {
   // à chaud (page Configuration) et le bandeau est de toute façon recomposé
   // juste en dessous.
   if (s_stats_label != nullptr) {
+    // Stats = 2e ligne de la pastille : elle grandit pour la loger, et la
+    // ligne d'état remonte. Sans stats, pastille d'une ligne, centrée.
     if (prefs::show_stats()) {
       lv_obj_remove_flag(s_stats_label, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_height(s_state_chip, kChipTallH);
+      lv_obj_align(s_state_lbl, LV_ALIGN_TOP_MID, 0, 6);
     } else {
       lv_obj_add_flag(s_stats_label, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_height(s_state_chip, kChipH);
+      lv_obj_center(s_state_lbl);
     }
   }
+  gate_refresh(true);
   // Réarme `dirty` si la composition a échoué (buffer en cours de blit, alloc
   // du scratch refusée) : sans ça le bandeau resterait périmé toute la session.
   s_band_dirty.store(!band_compose(), std::memory_order_relaxed);
@@ -389,6 +409,42 @@ static void answer_set_visual(bool active) {
   lv_obj_set_style_text_color(s_state_lbl, lv_color_hex(active ? kMicOn : kSub),
                               0);
   state_chip_refresh();
+}
+
+// Mutex LVGL requis (lvgl_task).
+static void gate_refresh(bool force) {
+  if (s_gate_btn == nullptr || s_cbs.gate_look == nullptr ||
+      s_cbs.gate_version == nullptr) {
+    return;
+  }
+  const uint32_t v = s_cbs.gate_version();
+  if (!force && v == s_gate_shown) {
+    return;
+  }
+  s_gate_shown = v;
+  const gate_logic::Look l = s_cbs.gate_look();
+  if (l.hint[0] != '\0') { // aucune entité configurée : pas de bouton
+    lv_obj_add_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_remove_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_gate_lbl, l.label);
+    lv_obj_set_style_bg_color(s_gate_btn,
+                              lv_color_hex(ui::gate_tone_color(l.tone)), 0);
+    if (l.enabled) {
+      lv_obj_remove_state(s_gate_btn, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(s_gate_btn, LV_STATE_DISABLED);
+    }
+  }
+  s_band_dirty.store(true, std::memory_order_relaxed);
+}
+
+static void cb_gate(lv_event_t *e) {
+  (void)e;
+  if (s_cbs.gate_press != nullptr) {
+    (void)s_cbs.gate_press();
+  }
+  gate_refresh(true);
 }
 
 static void cb_back(lv_event_t *e) {
@@ -558,15 +614,16 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_set_pos(s_band, 0, kBandY);
   lv_obj_set_size(s_band, kScrW, kBandH);
 
-  // Retour | Son | Répondre | état | Micro | stats — positions logiques
-  // mesurées sur les 1280 px de large. Les sliders ont rétréci pour loger la
-  // pastille d'état sans recouvrir les stats.
+  // Retour | Son | Répondre | état (+ stats) | Micro | Portail — positions
+  // logiques sur les 1280 px de large. Répondre à 280 : « Raccrocher » et son
+  // icône mesurent ~264 px en 36 px. Les stats vivent dans la pastille
+  // d'état depuis que le portail a pris leur place à droite.
   lv_obj_t *back_btn =
       make_button(s_band, LV_SYMBOL_LEFT, 12, 80, kBadge, kInk, nullptr);
   lv_obj_add_event_cb(back_btn, cb_back, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *spk_slider =
-      make_slider(s_band, 108, 180, kWarm,
+      make_slider(s_band, 104, 150, kWarm,
                   bsp::Bsp::instance().speaker_volume());
   lv_obj_add_event_cb(spk_slider, cb_speaker_volume_changed,
                       LV_EVENT_VALUE_CHANGED, NULL);
@@ -574,17 +631,17 @@ void create_screen(const ui::Callbacks &cbs) {
                       NULL);
 
   s_answer_btn =
-      make_button(s_band, "", 304, 300, kAnswer, 0xFFFFFF, &s_answer_lbl);
+      make_button(s_band, "", 266, 280, kAnswer, 0xFFFFFF, &s_answer_lbl);
   lv_obj_add_event_cb(s_answer_btn, cb_toggle_answer, LV_EVENT_CLICKED, NULL);
 
   s_state_chip = lv_obj_create(s_band);
   lv_obj_remove_flag(s_state_chip, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_remove_flag(s_state_chip, LV_OBJ_FLAG_CLICKABLE);
   opaque_bg(s_state_chip, kBadge);
-  lv_obj_set_size(s_state_chip, 290, 48);
+  lv_obj_set_size(s_state_chip, 290, kChipH);
   lv_obj_set_style_radius(s_state_chip, 24, 0);
   lv_obj_set_style_pad_all(s_state_chip, 0, 0);
-  lv_obj_align(s_state_chip, LV_ALIGN_LEFT_MID, 620, 0);
+  lv_obj_align(s_state_chip, LV_ALIGN_LEFT_MID, 558, 0);
   s_state_lbl = lv_label_create(s_state_chip);
   lv_label_set_long_mode(s_state_lbl, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_state_lbl, &montserrat_fr_24, 0);
@@ -592,21 +649,32 @@ void create_screen(const ui::Callbacks &cbs) {
   answer_set_visual(false);
 
   lv_obj_t *mic_slider =
-      make_slider(s_band, 926, 160, kCold, bsp::Bsp::instance().mic_gain());
+      make_slider(s_band, 860, 146, kCold, bsp::Bsp::instance().mic_gain());
   lv_obj_add_event_cb(mic_slider, cb_mic_gain_changed, LV_EVENT_VALUE_CHANGED,
                       NULL);
   lv_obj_add_event_cb(mic_slider, cb_mic_gain_changed, LV_EVENT_RELEASED, NULL);
 
-  s_stats_label = lv_label_create(s_band);
-  lv_obj_set_width(s_stats_label, 170);
+  // Stats : 2e ligne de la pastille d'état (prepare_stream la dimensionne).
+  s_stats_label = lv_label_create(s_state_chip);
+  lv_obj_set_width(s_stats_label, 270);
   lv_label_set_long_mode(s_stats_label, LV_LABEL_LONG_CLIP);
   lv_label_set_text(s_stats_label, "0");
   lv_obj_set_style_text_font(s_stats_label, &montserrat_fr_16, 0);
   lv_obj_set_style_text_color(s_stats_label, lv_color_hex(kSub), 0);
-  lv_obj_set_style_text_align(s_stats_label, LV_TEXT_ALIGN_RIGHT, 0);
-  opaque_bg(s_stats_label, kPanel);
-  lv_obj_set_style_pad_all(s_stats_label, 4, 0);
-  lv_obj_align(s_stats_label, LV_ALIGN_RIGHT_MID, -12, 0);
+  lv_obj_set_style_text_align(s_stats_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(s_stats_label, LV_ALIGN_BOTTOM_MID, 0, -4);
+
+  // Portail : libellé en 24 px sur deux lignes au plus (« Portail
+  // indisponible » = 237 px), le bouton garde la hauteur de Répondre.
+  s_gate_btn = make_button(s_band, "", 1018, 250, kBadge, 0xFFFFFF, &s_gate_lbl);
+  lv_obj_set_width(s_gate_lbl, 230);
+  lv_label_set_long_mode(s_gate_lbl, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(s_gate_lbl, &montserrat_fr_24, 0);
+  lv_obj_set_style_text_align(s_gate_lbl, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(s_gate_lbl);
+  lv_obj_set_style_bg_opa(s_gate_btn, LV_OPA_60, LV_STATE_DISABLED);
+  lv_obj_add_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(s_gate_btn, cb_gate, LV_EVENT_CLICKED, NULL);
   // Masqué tant que prepare_stream n'a pas relu le réglage : l'état visible est
   // celui de la dernière session, jamais celui de la création de l'écran.
   lv_obj_add_flag(s_stats_label, LV_OBJ_FLAG_HIDDEN);
@@ -616,6 +684,7 @@ void create_screen(const ui::Callbacks &cbs) {
   band_track(s_answer_btn);
   band_track(mic_slider);
   band_track(s_stats_label);
+  band_track(s_gate_btn);
 
   lv_obj_update_layout(video_zone);
   lv_obj_get_coords(video_zone, &s_video_zone_phys);
