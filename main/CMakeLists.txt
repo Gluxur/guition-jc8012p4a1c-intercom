@@ -39,6 +39,7 @@ idf_component_register(
          "net/file_server.cpp"
          "net/gcal.cpp"
          "net/gcal_parse.cpp"
+         "net/github_release.cpp"
          "net/mjpeg_client.cpp"
          "net/noise_nnpsk0.cpp"
          "net/signaling.cpp"
