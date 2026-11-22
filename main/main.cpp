@@ -125,6 +125,9 @@ static void lvgl_task(void *arg) {
       }
     };
     ui_cbs.ringtone_active = ringtone::is_ringing;
+    ui_cbs.gate_press = gate::press;
+    ui_cbs.gate_look = gate::look;
+    ui_cbs.gate_version = gate::version;
     ui::create_screens(ui_cbs);
   }
 

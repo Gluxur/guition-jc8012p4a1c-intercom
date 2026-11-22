@@ -92,6 +92,12 @@ struct Palette {
   uint32_t tile_settings;
   uint32_t tile_power;
 
+  // --- Bouton portail (gate_logic::Tone) ---
+  uint32_t gate_open;  // fermé : proposer d'ouvrir
+  uint32_t gate_close; // ouvert : proposer de fermer
+  uint32_t gate_stop;  // en mouvement : proposer d'arrêter
+  uint32_t gate_off;   // indisponible / non configuré
+
   // --- Thème LVGL par défaut (interrupteurs, sliders, listes, onglets) ---
   uint32_t lv_primary;
   uint32_t lv_secondary;

@@ -66,6 +66,11 @@ constexpr Palette kClassic = {
     .tile_settings = 0x34405A,
     .tile_power = 0x7A2020,
 
+    .gate_open = 0x1E8E3E,
+    .gate_close = 0x2F6FB0,
+    .gate_stop = 0xD97A3D,
+    .gate_off = 0x4A505C,
+
     .lv_primary = 0x1FA85A,
     .lv_secondary = 0xD97A3D,
 };
@@ -130,6 +135,11 @@ constexpr Palette kVice = {
     .tile_calls = 0x0E9DA3,
     .tile_settings = 0x4A2A7A,
     .tile_power = 0x9E1B3B,
+
+    .gate_open = 0x13A36B,
+    .gate_close = 0x3A5FD9,
+    .gate_stop = 0xF07A2A,
+    .gate_off = 0x4A3A60,
 
     .lv_primary = 0xFF3E9A,
     .lv_secondary = 0xFF9A3C,

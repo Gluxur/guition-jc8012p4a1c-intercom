@@ -17,6 +17,7 @@ idf_component_register(
          "app/ha_entity_id.cpp"
          "app/presence.cpp"
          "app/video_mjpeg.cpp"
+         "ui/gate_style.cpp"
          "ui/ui.cpp"
          "ui/ui_agenda.cpp"
          "ui/ui_call_viewer.cpp"

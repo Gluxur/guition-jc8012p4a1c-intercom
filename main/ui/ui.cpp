@@ -1,5 +1,6 @@
 #include "ui.h"
 
+#include "gate_style.h"
 #include "icons.h"
 #include "ui_agenda.h"
 #include "ui_call_viewer.h"
@@ -22,12 +23,22 @@
 #include <cstring>
 #include <iterator>
 
+LV_FONT_DECLARE(montserrat_fr_24);
 LV_FONT_DECLARE(montserrat_fr_36);
 LV_FONT_DECLARE(icons_fa_56);
 
 namespace ui {
 
 static Callbacks s_cbs = {};
+
+// Tuile Portail : libellé et couleur suivent gate_look(), sondé toutes les
+// 200 ms tant que l'accueil est affiché (un atomique lu, rien d'autre).
+static constexpr uint32_t kGatePeriodMs = 200;
+static lv_obj_t *s_gate_tile = nullptr;
+static lv_obj_t *s_gate_lbl = nullptr;
+static lv_obj_t *s_gate_hint = nullptr;
+static lv_timer_t *s_gate_timer = nullptr;
+static uint32_t s_gate_shown = UINT32_MAX;
 
 static lv_obj_t *s_home_scr = NULL;
 static lv_obj_t *s_error_label = NULL;
@@ -116,6 +127,41 @@ static void update_net_locked() {
 
 static void net_timer_cb(lv_timer_t *) { update_net_locked(); }
 
+static void update_gate_tile_locked(bool force) {
+  if (s_gate_tile == nullptr || s_cbs.gate_look == nullptr ||
+      s_cbs.gate_version == nullptr) {
+    return;
+  }
+  const uint32_t v = s_cbs.gate_version();
+  if (!force && v == s_gate_shown) {
+    return;
+  }
+  s_gate_shown = v;
+  const gate_logic::Look l = s_cbs.gate_look();
+  lv_label_set_text(s_gate_lbl, l.label);
+  lv_label_set_text(s_gate_hint, l.hint);
+  if (l.hint[0] == '\0') {
+    lv_obj_add_flag(s_gate_hint, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_remove_flag(s_gate_hint, LV_OBJ_FLAG_HIDDEN);
+  }
+  lv_obj_set_style_bg_color(s_gate_tile, lv_color_hex(ui::gate_tone_color(l.tone)), 0);
+  if (l.enabled) {
+    lv_obj_remove_state(s_gate_tile, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(s_gate_tile, LV_STATE_DISABLED);
+  }
+}
+
+static void gate_timer_cb(lv_timer_t *) { update_gate_tile_locked(false); }
+
+static void cb_gate_tile(lv_event_t *) {
+  if (s_cbs.gate_press != nullptr) {
+    (void)s_cbs.gate_press();
+  }
+  update_gate_tile_locked(true);
+}
+
 /* Le sondage ne tourne que quand l'accueil est au premier plan : hors écran il
  * ne repeindrait rien et volerait du temps à la tâche LVGL pendant le
  * streaming. */
@@ -124,20 +170,32 @@ static void cb_home_screen_event(lv_event_t *e) {
     update_net_locked();
     if (!s_net_timer)
       s_net_timer = lv_timer_create(net_timer_cb, kNetPeriodMs, nullptr);
-  } else if (s_net_timer) {
-    lv_timer_delete(s_net_timer);
-    s_net_timer = nullptr;
+    update_gate_tile_locked(true);
+    if (!s_gate_timer)
+      s_gate_timer = lv_timer_create(gate_timer_cb, kGatePeriodMs, nullptr);
+  } else {
+    if (s_net_timer) {
+      lv_timer_delete(s_net_timer);
+      s_net_timer = nullptr;
+    }
+    if (s_gate_timer) {
+      lv_timer_delete(s_gate_timer);
+      s_gate_timer = nullptr;
+    }
   }
 }
 
-/* Tuiles de l'accueil : grille 3x2 sous le titre, dans les 1280x800 logiques.
- * Un seul constructeur pour que les six tuiles ne divergent pas à la prochaine
- * retouche. */
-static constexpr int32_t kTileW = 378;
+/* Tuiles de l'accueil : grille 4x2 sous le titre, dans les 1280x800 logiques
+ * (2 x 32 + 4 x 292 + 3 x 16 = 1280). 292 et pas moins : « Configuration »
+ * mesure 254 px en montserrat_fr_36 et ne doit pas se couper. Un seul
+ * constructeur pour que les tuiles ne divergent pas à la prochaine retouche. */
+static constexpr int32_t kTileW = 292;
 static constexpr int32_t kTileH = 300;
-static constexpr int32_t kTileGap = 24;
-static constexpr int32_t kTileLeft = 48;
+static constexpr int32_t kTileGap = 16;
+static constexpr int32_t kTileLeft = 32;
 static constexpr int32_t kTileTop = 128;
+static constexpr int32_t kTilePadHor = 18;
+
 
 static lv_obj_t *make_home_tile(const char *icon, const char *text, int col,
                                 int row, uint32_t bg, lv_event_cb_t cb) {
@@ -147,7 +205,8 @@ static lv_obj_t *make_home_tile(const char *icon, const char *text, int col,
                  kTileTop + row * (kTileH + kTileGap));
   lv_obj_set_style_bg_color(btn, lv_color_hex(bg), 0);
   lv_obj_set_style_radius(btn, 24, 0);
-  lv_obj_set_style_pad_all(btn, 28, 0);
+  lv_obj_set_style_pad_ver(btn, 28, 0);
+  lv_obj_set_style_pad_hor(btn, kTilePadHor, 0);
   /* Le thème par défaut pose une ombre floutée sur tout lv_button
    * (lv_theme_default.c : shadow_width LV_DPX(3), offset LV_DPX(4)) et le cache
    * de masques est désactivé (LV_DRAW_SW_SHADOW_CACHE_SIZE) : le flou est
@@ -176,12 +235,17 @@ static lv_obj_t *make_home_tile(const char *icon, const char *text, int col,
 
   lv_obj_t *lbl = lv_label_create(btn);
   lv_label_set_text(lbl, text);
+  // Largeur de la tuile : « Éteindre l'écran » passe sur deux lignes.
+  lv_obj_set_width(lbl, LV_PCT(100));
+  lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_font(lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
   lv_obj_align(lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
   return btn;
 }
+
+const Callbacks &callbacks() { return s_cbs; }
 
 void create_screens(const Callbacks &cbs) {
   s_cbs = cbs;
@@ -234,6 +298,23 @@ void create_screens(const Callbacks &cbs) {
   make_home_tile(icon::kVideo, "Caméra", 0, 0, ui::theme::active.tile_camera, cb_show_camera_v2);
   make_home_tile(icon::kCloudSun, "Météo", 1, 0, ui::theme::active.tile_weather, cb_show_weather);
   make_home_tile(icon::kCalendar, "Agenda", 2, 0, ui::theme::active.tile_agenda, cb_show_agenda);
+  s_gate_tile = make_home_tile(icon::kGate, "Portail", 3, 0,
+                               ui::theme::active.gate_off, cb_gate_tile);
+  // Enfants de make_home_tile : 0 = pastille d'icône, 1 = libellé.
+  s_gate_lbl = lv_obj_get_child(s_gate_tile, 1);
+  // Le libellé sur deux lignes au plus (« Portail indisponible ») : remonté
+  // au-dessus de l'indice, qui occupe le bas de la tuile.
+  lv_obj_align(s_gate_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -34);
+  s_gate_hint = lv_label_create(s_gate_tile);
+  lv_obj_set_width(s_gate_hint, LV_PCT(100));
+  lv_label_set_long_mode(s_gate_hint, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(s_gate_hint, &montserrat_fr_24, 0);
+  lv_obj_set_style_text_color(s_gate_hint, lv_color_white(), 0);
+  lv_obj_set_style_text_opa(s_gate_hint, LV_OPA_80, 0);
+  lv_obj_align(s_gate_hint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  // Désactivée = même couleur un peu éteinte, pas le gris du thème LVGL.
+  lv_obj_set_style_bg_opa(s_gate_tile, LV_OPA_60, LV_STATE_DISABLED);
+  update_gate_tile_locked(true);
   make_home_tile(LV_SYMBOL_CALL, "Appels", 0, 1, ui::theme::active.tile_calls, cb_show_calls);
   make_home_tile(LV_SYMBOL_SETTINGS, "Configuration", 1, 1, ui::theme::active.tile_settings,
                  cb_show_settings);

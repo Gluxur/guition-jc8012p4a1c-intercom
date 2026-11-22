@@ -6,6 +6,7 @@
 #include "ui.h"
 #include "ui_call_viewer.h"
 #include "ui_stats.h"
+#include "gate_style.h"
 #include "lottie_frames.h"
 #include "app/call_history.h"
 #include "app/ephemeris.h"
@@ -144,6 +145,51 @@ static lv_timer_t *s_clock_timer = nullptr;
 static lv_obj_t *s_net_wifi = nullptr;
 static lv_obj_t *s_net_ha = nullptr;
 static lv_timer_t *s_net_timer = nullptr;
+
+// Bouton portail de l'entête : masqué tant qu'aucune entité n'est configurée.
+// Sondé toutes les 200 ms tant que l'écran est affiché (un atomique lu).
+static constexpr uint32_t kGatePeriodMs = 200;
+static lv_obj_t *s_gate_btn = nullptr;
+static lv_obj_t *s_gate_lbl = nullptr;
+static lv_timer_t *s_gate_timer = nullptr;
+static uint32_t s_gate_shown = UINT32_MAX;
+
+// Mutex LVGL requis.
+static void update_gate_locked(bool force) {
+  const ui::Callbacks &cbs = ui::callbacks();
+  if (s_gate_btn == nullptr || cbs.gate_look == nullptr ||
+      cbs.gate_version == nullptr) {
+    return;
+  }
+  const uint32_t v = cbs.gate_version();
+  if (!force && v == s_gate_shown) {
+    return;
+  }
+  s_gate_shown = v;
+  const gate_logic::Look l = cbs.gate_look();
+  if (l.hint[0] != '\0') { // non configuré
+    lv_obj_add_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text(s_gate_lbl, l.short_label);
+  lv_obj_set_style_bg_color(s_gate_btn, lv_color_hex(ui::gate_tone_color(l.tone)), 0);
+  if (l.enabled) {
+    lv_obj_remove_state(s_gate_btn, LV_STATE_DISABLED);
+  } else {
+    lv_obj_add_state(s_gate_btn, LV_STATE_DISABLED);
+  }
+}
+
+static void gate_timer_cb(lv_timer_t *) { update_gate_locked(false); }
+
+static void cb_gate(lv_event_t *) {
+  const ui::Callbacks &cbs = ui::callbacks();
+  if (cbs.gate_press != nullptr) {
+    (void)cbs.gate_press();
+  }
+  update_gate_locked(true);
+}
 static bool s_screen_active = false;
 // Animations Lottie en cours (et non en pause). Distinct de s_screen_active :
 // écran affiché mais rétroéclairage coupé (extinction HA, veille de nuit), les
@@ -842,9 +888,16 @@ static void cb_screen_event(lv_event_t *e) {
     update_net_locked();
     if (!s_net_timer)
       s_net_timer = lv_timer_create(net_timer_cb, kNetPeriodMs, nullptr);
+    update_gate_locked(true);
+    if (!s_gate_timer)
+      s_gate_timer = lv_timer_create(gate_timer_cb, kGatePeriodMs, nullptr);
     update_missed_locked();
   } else if (code == LV_EVENT_SCREEN_UNLOADED) {
     s_screen_active = false;
+    if (s_gate_timer) {
+      lv_timer_delete(s_gate_timer);
+      s_gate_timer = nullptr;
+    }
     if (s_refresh_timer) {
       lv_timer_delete(s_refresh_timer);
       s_refresh_timer = nullptr;
@@ -1036,6 +1089,23 @@ void create_screen() {
   lv_obj_set_style_text_font(s_net_ha, &lv_font_montserrat_24, 0);
 
   update_net_locked();
+
+  // Portail, avant l'heure : l'écran affiché au repos, un seul appui.
+  s_gate_btn = lv_button_create(hright);
+  lv_obj_set_height(s_gate_btn, 72);
+  lv_obj_set_width(s_gate_btn, LV_SIZE_CONTENT);
+  lv_obj_set_style_radius(s_gate_btn, 16, 0);
+  lv_obj_set_style_border_width(s_gate_btn, 0, 0);
+  lv_obj_set_style_shadow_width(s_gate_btn, 0, 0);
+  lv_obj_set_style_pad_hor(s_gate_btn, 24, 0);
+  lv_obj_set_style_bg_opa(s_gate_btn, LV_OPA_60, LV_STATE_DISABLED);
+  s_gate_lbl = lv_label_create(s_gate_btn);
+  lv_obj_set_style_text_font(s_gate_lbl, &montserrat_fr_24, 0);
+  lv_obj_set_style_text_color(s_gate_lbl, lv_color_white(), 0);
+  lv_obj_center(s_gate_lbl);
+  lv_label_set_text(s_gate_lbl, "");
+  lv_obj_add_flag(s_gate_btn, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(s_gate_btn, cb_gate, LV_EVENT_CLICKED, NULL);
 
   // Badge heure : fond gris clair arrondi.
   lv_obj_t *clock_badge = lv_obj_create(hright);

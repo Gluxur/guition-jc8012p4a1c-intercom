@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/gate_logic.h" // pur : types du bouton portail
+
 #include <cstddef>
 #include <cstdint>
 
@@ -35,7 +37,19 @@ struct Callbacks {
   // sans passer par Home Assistant ni ouvrir de session caméra.
   void (*toggle_ringtone)();
   bool (*ringtone_active)();
+
+  // Portail (app/gate). gate_look() décrit le bouton, identique sur les trois
+  // écrans ; gate_version() change à chaque fois que gate_look() peut changer
+  // (sondé par les timers LVGL des écrans) ; gate_press() n'est jamais
+  // bloquant.
+  bool (*gate_press)();
+  gate_logic::Look (*gate_look)();
+  uint32_t (*gate_version)();
 };
+
+/* Callbacks reçus par create_screens(), pour les écrans construits sans
+ * paramètre (météo). */
+const Callbacks &callbacks();
 
 /* Crée les écrans home + caméra (sliders volume/micro) et charge l'écran
  * home. Prend le mutex LVGL en interne. */

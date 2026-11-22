@@ -13,5 +13,6 @@ inline constexpr const char *kMicOff = "\xEF\x84\xB1";    // U+F131 microphone-s
 inline constexpr const char *kSun = "\xEF\x86\x85";       // U+F185 sun
 inline constexpr const char *kHangUp = "\xEF\x8F\x9D";    // U+F3DD phone-slash
 inline constexpr const char *kCloudSun = "\xEF\x9B\x84";  // U+F6C4 cloud-sun
+inline constexpr const char *kGate = "\xEF\x94\xAB";      // U+F52B door-open
 
 } // namespace ui::icon
