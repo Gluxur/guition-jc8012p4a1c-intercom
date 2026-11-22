@@ -12,6 +12,7 @@ idf_component_register(
          "app/ha_api.cpp"
          "app/mic_session.cpp"
          "app/motion_detect.cpp"
+         "app/gate_logic.cpp"
          "app/presence.cpp"
          "app/video_mjpeg.cpp"
          "ui/ui.cpp"

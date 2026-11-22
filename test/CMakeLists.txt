@@ -86,6 +86,7 @@ add_executable(tests
   test_esphome_frame.cpp
   test_esphome_pb.cpp
   test_noise_nnpsk0.cpp
+  test_gate_logic.cpp
   # Sources applicatives réelles, compilées pour le host. En ajouter une ici
   # n'est légitime que si elle ne tire aucun header de driver ESP-IDF (stubs/
   # ne couvre que le log et le compteur µs, cf. les commentaires en tête).
@@ -93,6 +94,7 @@ add_executable(tests
   # net/<x>_parse.cpp le décodage pur — seul ce dernier est compilé ici.
   "${APP_DIR}/app/call_log_parse.cpp"
   "${APP_DIR}/app/ephemeris.cpp"
+  "${APP_DIR}/app/gate_logic.cpp"
   "${APP_DIR}/app/motion_detect.cpp"
   "${APP_DIR}/media/g711.cpp"
   "${APP_DIR}/media/ringtone.cpp"
