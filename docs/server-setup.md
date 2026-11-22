@@ -95,11 +95,46 @@ device page for the exact IDs. Among them:
 - `switch` Caméra sans sonnerie (open the camera without ringing),
   `switch` SD log, file server, stats overlay,
 - `update` Firmware (Settings → Updates, image served by HA),
+- `text` Entité portail / météo / agenda (the HA entity ids the board uses,
+  see below),
 - `button` reboot, OTA from SD card, acknowledge missed calls,
   presence snapshot,
 - `sensor` RSSI, uptime, CPU per core, PSRAM, internal SRAM, SD free space,
   missed calls; `text_sensor` IP, firmware version, OTA status,
 - `binary_sensor` Appel en cours (in call), Présence devant l'écran (presence).
+
+### Gate
+
+Set **Entite portail** to a `cover.*` entity whose state HA reports reliably
+(`open`, `closed`, `opening`, `closing`). The board then shows one gate
+button on the home screen, in the weather screen's header and in the camera
+band. The button follows the live state:
+
+| Gate state | Button | Action |
+|---|---|---|
+| closed | Ouvrir le portail (green) | `cover.open_cover` |
+| open | Fermer le portail (blue) | `cover.close_cover` |
+| opening / closing | Arrêter (orange) | `cover.stop_cover` |
+| unknown, unavailable, HA disconnected | Portail indisponible (grey) | none |
+
+The board needs **Allow the device to perform Home Assistant actions** for
+this, like for the weather. A refused command shows "Échec portail" for 3 s.
+
+Each command sent from the tablet fires the HA event
+`esphome.visiophone_gate`, with `action` (`open` / `close` / `stop`) and
+`during_call` (`true` / `false`):
+
+```yaml
+automation:
+  - alias: "Gate operated from the indoor screen"
+    triggers:
+      - trigger: event
+        event_type: esphome.visiophone_gate
+    actions:
+      - action: notify.notify
+        data:
+          message: "Portail {{ trigger.event.data.action }} depuis la tablette"
+```
 
 ### Doorbell automation
 
@@ -140,17 +175,28 @@ automation:
 During a call presence is forced to "present", so the screen never goes dark
 while someone rings.
 
+### Entity ids: gate, weather, calendar
+
+The board's device page in HA has three text fields, in its configuration
+section: **Entite portail**, **Entite meteo**, **Entite agenda**. Type the full
+entity id (`cover.my_gate`, `weather.forecast_home`, `calendar.home`). A
+change applies at once, no reboot; the value is stored on the board.
+
+- An id with the wrong domain or with capitals is refused, and the field
+  snaps back to the stored value.
+- An empty gate field means "no gate": the button disappears.
+- On a fresh board the fields start from the `APP_SECRET_HA_*_ENTITY` values
+  of `main/app_secrets.h`, if any.
+
+A wrong weather or calendar id shows up in the logs as `action failed:
+Service call requested response data but did not match any entities`, and
+the weather page stays on "Chargement".
+
 ### Weather and calendar
 
 - Weather: any `weather.*` entity that supports `weather.get_forecasts`
-  (daily). Set its ID with `APP_SECRET_HA_WEATHER_ENTITY` in
-  `main/app_secrets.h`.
-- Calendar: any `calendar.*` entity (Google Calendar, CalDAV, local…). Set its
-  ID with `APP_SECRET_HA_CALENDAR_ENTITY`.
-
-A wrong ID shows up in the logs as `action failed: Service call requested
-response data but did not match any entities`, and the weather page stays on
-"Chargement".
+  (daily).
+- Calendar: any `calendar.*` entity (Google Calendar, CalDAV, local…).
 
 Both are fetched as **HA actions with a response**, through the API
 connection. The board sends a small Jinja *response template* with each call

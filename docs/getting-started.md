@@ -98,8 +98,7 @@ Installation constants that are not editable on screen live in
 
 | Constant | Default | Meaning |
 |---|---|---|
-| `kHaWeatherEntity` | `weather.forecast_home` | HA weather entity shown on the weather page — set `APP_SECRET_HA_WEATHER_ENTITY` in `main/app_secrets.h` |
-| `kHaCalendarEntity` | `calendar.home` | HA calendar entity for the agenda — set `APP_SECRET_HA_CALENDAR_ENTITY` in `main/app_secrets.h` |
+| `kHaWeatherEntity`, `kHaCalendarEntity`, `kHaGateEntity` | `weather.forecast_home`, `calendar.home`, none | First-boot defaults of the HA entity ids (`APP_SECRET_HA_*_ENTITY` in `main/app_secrets.h`). Once the board runs, they are edited from its device page in HA — see [server-setup.md](server-setup.md#entity-ids-gate-weather-calendar) |
 | `kTimezone` | `CET-1CEST,M3.5.0,M10.5.0/3` | POSIX TZ string (Europe/Paris) |
 | `kGo2rtcAudioSrc`, `kGo2rtcMicSrc`, `kGo2rtcMjpeg2Src` | `vto_audio_only`, `vto_audio_input_only`, `vto_mjpeg2` | go2rtc stream names |
 | `kGo2rtcPort`, `kHaPort` | 1984, 8123 | Service ports (`kHaPort`: OTA image only) |

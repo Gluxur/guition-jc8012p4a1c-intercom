@@ -27,6 +27,9 @@ encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
 
 **Calls**
 - Doorbell from Home Assistant (a "Sonner" button) → camera screen opens + ringtone.
+- **Gate button** (any HA `cover.*`): open / close / stop from the camera
+  screen, the weather screen or the home screen, following the gate's live
+  state; each command fires a HA event.
 - Full-screen MJPEG video at 15-25 fps, decoded by the P4's **hardware JPEG
   engine** straight into the display framebuffer (zero copy).
 - Incoming audio over WebRTC (G.711 A-law); **Answer** opens a second WebRTC
