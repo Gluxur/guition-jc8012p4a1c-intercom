@@ -31,8 +31,9 @@ main/
                     encryption, host-tested)
   media/            aec (esp-sr), g711, ringtone (passive mixer), ringtone_sd, wav_parse
   sys/              settings (network config, NVS, applied at boot), prefs (comfort
-                    settings, applied live), dbg_log, sd_log,
-                    ota_ctrl, net_wdt, usb_msc, sys_stats, mutex.h
+                    settings, applied live), i18n + lang/ (UI texts, one file per
+                    language), dbg_log, sd_log, ota_ctrl, net_wdt, usb_msc,
+                    sys_stats, mutex.h
 components/
   bsp/              bsp::Bsp singleton: display, touch, LVGL, PPA, audio codec,
                     microSD, front camera
@@ -56,6 +57,23 @@ link from screens to application logic, which keeps the module graph acyclic.
 
 Kept apart on purpose: reconfiguring the network live during a stream is a
 reliable source of hard bugs. No module ever formats a URL itself.
+
+The UI language and the theme are `prefs` too, but take effect at the next
+restart: screens and the HA entity catalogue are built once at boot.
+
+## Languages
+
+Every user-visible text (screen, HA entity names, select labels) is a key of
+`i18n::Str`, its text lives in `main/sys/lang/fr.h` and `main/sys/lang/en.h`,
+and call sites use `i18n::t(Str::kX)`. The tables are `constexpr` arrays in
+flash (.rodata, ~10 KB, no heap, no file read). `sys/i18n.cpp` refuses to
+compile if a language misses a key, defines one twice, or gives a printf
+format different conversions than French. No `LV_SYMBOL_*` in the tables:
+callers compose `"%s %s"` (icon, text), which keeps them host-testable.
+Adding a language: a new `lang/<xx>.h`, an `i18n::Lang` value, one entry in
+the tables of `i18n.cpp` and in the Settings dropdown. The file server page
+(`main/web/index.html`) has its own small dictionary and reads the language
+from `/api/info`.
 
 ## Video pipeline (go2rtc MJPEG → screen)
 
@@ -117,7 +135,8 @@ Don't move these affinities without measuring throughput: pinning lwIP's
 ## Boot order
 
 `app_main` initialises in an order where each step has a written reason:
-NVS → debug log ring → SD log ring → `settings` → `prefs` → **BSP** (owns the
+NVS → debug log ring → SD log ring → `settings` → `prefs` → `i18n` (language
+frozen for the session) → **BSP** (owns the
 SDMMC controller) → SD log → call history → ringtone from SD (*before* the
 audio pipeline, its only reader) → G.711 → audio pipeline → **JPEG engine**
 (needs internal DMA RAM early) → sessions → LVGL task → Wi-Fi → OTA (*before*

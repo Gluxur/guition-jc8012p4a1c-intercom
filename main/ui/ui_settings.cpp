@@ -12,6 +12,7 @@
 #include "media/ringtone.h"
 #include "media/ringtone_sd.h"
 #include "net/file_server.h"
+#include "sys/i18n.h"
 #include "sys/prefs.h"
 #include "sys/sd_log.h"
 #include "sys/settings.h"
@@ -22,6 +23,8 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_36);
 // La police intégrée lv_font_montserrat_24 est générée sur -r 0x20-0x7F : ASCII
@@ -85,13 +88,19 @@ lv_obj_t *s_btn_ringtest = nullptr;
 lv_obj_t *s_lbl_ringtest = nullptr;
 lv_obj_t *s_dd_echo = nullptr;
 lv_obj_t *s_dd_theme = nullptr;
+lv_obj_t *s_dd_lang = nullptr;
 
 // Ordre = valeurs de prefs::UiTheme : l'index du dropdown EST le réglage.
-constexpr const char *kThemeOptions =
-    "Classique (d'origine)\nVice (coucher de soleil)";
+const char *theme_options() {
+  return i18n::t(Str::kSettingsThemeOptions);
+}
 // Ordre = valeurs de prefs::EchoCancel : l'index du dropdown EST le réglage.
-constexpr const char *kEchoOptions =
-    "Désactivée\nÉconomique (moins de CPU)\nHaute performance (moins de RAM)";
+const char *echo_options() {
+  return i18n::t(Str::kSettingsEchoOptions);
+}
+// Ordre = valeurs de i18n::Lang. Chaque langue écrite dans sa propre langue :
+// c'est ce qu'on cherche des yeux quand l'interface est dans l'autre.
+constexpr const char *kLangOptions = "Français\nEnglish";
 
 // Callbacks applicatifs : seul le bouton d'essai de la sonnerie s'en sert.
 ui::Callbacks s_cbs = {};
@@ -106,7 +115,9 @@ size_t s_ring_count = 1;
 // dropdown en concurrence, et la carte n'a qu'un contrôleur.
 std::atomic<bool> s_ring_scanning{false};
 
-constexpr const char *kInternalRing = "(sonnerie interne)";
+const char *internal_ring_label() {
+  return i18n::t(Str::kSettingsRingInternal);
+}
 
 // Le formulaire ne scrolle que lorsque le clavier lui prend 300 px.
 void set_form_height(bool keyboard_open) {
@@ -181,8 +192,8 @@ void show_reboot_box(const char *title_txt, const char *body) {
   lv_obj_t *title = lv_msgbox_add_title(mbox, title_txt);
   lv_obj_set_height(lv_obj_get_parent(title), kMsgboxBandH);
   lv_msgbox_add_text(mbox, body);
-  lv_obj_t *btn_now = lv_msgbox_add_footer_button(mbox, "Redémarrer");
-  lv_obj_t *btn_later = lv_msgbox_add_footer_button(mbox, "Plus tard");
+  lv_obj_t *btn_now = lv_msgbox_add_footer_button(mbox, i18n::t(Str::kSettingsRestart));
+  lv_obj_t *btn_later = lv_msgbox_add_footer_button(mbox, i18n::t(Str::kSettingsLater));
   lv_obj_set_height(lv_obj_get_parent(btn_now), kMsgboxBandH);
   lv_obj_add_event_cb(btn_now, cb_reboot, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(btn_later, cb_close_msgbox, LV_EVENT_CLICKED, mbox);
@@ -203,22 +214,22 @@ void cb_save(lv_event_t *e) {
   // Un SSID ou un hôte vide rendrait la carte injoignable, et seul un
   // effacement NVS la récupérerait : on refuse avant d'écrire.
   if (cfg.wifi_ssid[0] == '\0' || cfg.host[0] == '\0') {
-    lv_label_set_text(s_status, "SSID et Serveur sont obligatoires");
+    lv_label_set_text(s_status, i18n::t(Str::kSettingsRequired));
     lv_obj_set_style_text_color(s_status, lv_color_hex(ui::theme::active.status_err), 0);
     return;
   }
 
   if (!settings::save(cfg)) {
-    lv_label_set_text(s_status, "Echec de l'ecriture NVS");
+    lv_label_set_text(s_status,
+                      i18n::t(Str::kSettingsNvsFailed));
     lv_obj_set_style_text_color(s_status, lv_color_hex(ui::theme::active.status_err), 0);
     return;
   }
-  lv_label_set_text(s_status, "Enregistre");
+  lv_label_set_text(s_status, i18n::t(Str::kSettingsSaved));
   lv_obj_set_style_text_color(s_status, lv_color_hex(ui::theme::active.status_ok), 0);
 
-  show_reboot_box("Configuration enregistrée",
-                  "Les nouveaux paramètres ne s'appliquent qu'au "
-                  "redémarrage.");
+  show_reboot_box(i18n::t(Str::kSettingsSavedTitle),
+                  i18n::t(Str::kSettingsSavedBody));
 }
 
 // Les écrans sont construits une seule fois au boot avec la palette en
@@ -231,8 +242,23 @@ void cb_theme(lv_event_t *e) {
     return;
   }
   prefs::set_ui_theme(static_cast<prefs::UiTheme>(sel));
-  show_reboot_box("Thème modifié",
-                  "Le nouveau thème s'affichera au redémarrage.");
+  show_reboot_box(i18n::t(Str::kSettingsThemeTitle),
+                  i18n::t(Str::kSettingsThemeBody));
+}
+
+// Même contrat que le thème : écrans et entités HA sont libellés au boot
+// (cf. sys/i18n.h). La boîte s'affiche dans la langue EN VIGUEUR, celle que
+// l'utilisateur lit encore.
+void cb_lang(lv_event_t *e) {
+  lv_obj_t *dd = static_cast<lv_obj_t *>(lv_event_get_target(e));
+  const uint32_t sel = lv_dropdown_get_selected(dd);
+  if (sel > static_cast<uint32_t>(i18n::kLastLang) ||
+      static_cast<i18n::Lang>(sel) == prefs::language()) {
+    return;
+  }
+  prefs::set_language(static_cast<i18n::Lang>(sel));
+  show_reboot_box(i18n::t(Str::kSettingsLangTitle),
+                  i18n::t(Str::kSettingsLangBody));
 }
 
 void cb_back(lv_event_t *e) {
@@ -316,7 +342,8 @@ void refresh_file_server_url() {
   esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
   esp_netif_ip_info_t ip = {};
   if (netif == nullptr || esp_netif_get_ip_info(netif, &ip) != ESP_OK) {
-    lv_label_set_text(s_lbl_filesrv, "adresse inconnue");
+    lv_label_set_text(s_lbl_filesrv,
+                      i18n::t(Str::kSettingsUnknownAddress));
     return;
   }
   char txt[32]; // "http://255.255.255.255/" + NUL
@@ -383,8 +410,8 @@ void sync_ring_test_btn() {
     return;
   }
   const bool on = s_cbs.ringtone_active();
-  lv_label_set_text(s_lbl_ringtest,
-                    on ? LV_SYMBOL_STOP " Stop" : LV_SYMBOL_BELL " Essai");
+  lv_label_set_text_fmt(s_lbl_ringtest, "%s %s", on ? LV_SYMBOL_STOP : LV_SYMBOL_BELL,
+                        on ? i18n::t(Str::kSettingsRingStop) : i18n::t(Str::kSettingsRingTest));
   lv_obj_set_style_bg_color(s_btn_ringtest,
                             lv_color_hex(on ? ui::theme::active.btn_danger : ui::theme::active.btn_go), 0);
 }
@@ -496,7 +523,7 @@ void apply_ring_files_locked(const char found[][ringtone_sd::kNameMax],
   for (size_t i = 0; i < s_ring_count && off < sizeof(opts); i++) {
     const int written =
         snprintf(opts + off, sizeof(opts) - off, "%s%s", i == 0 ? "" : "\n",
-                 i == 0 ? kInternalRing : s_ring_names[i]);
+                 i == 0 ? internal_ring_label() : s_ring_names[i]);
     if (written < 0) {
       break;
     }
@@ -595,7 +622,8 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_set_style_pad_all(s_scr, 0, 0);
 
   lv_obj_t *title = lv_label_create(s_scr);
-  lv_label_set_text(title, LV_SYMBOL_SETTINGS " Configuration");
+  lv_label_set_text_fmt(title, "%s %s", LV_SYMBOL_SETTINGS,
+                        i18n::t(Str::kHomeSettings));
   lv_obj_set_style_text_color(title, lv_color_white(), 0);
   lv_obj_set_style_text_font(title, &montserrat_fr_36, 0);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, 24, 18);
@@ -606,8 +634,8 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_set_style_text_color(s_status, lv_color_hex(ui::theme::active.dark_sub), 0);
   lv_obj_align(s_status, LV_ALIGN_TOP_LEFT, 24, kBarH - 18);
 
-  make_bar_button("Retour", -24, ui::theme::active.btn_back, cb_back);
-  make_bar_button("Enregistrer", -264, ui::theme::active.btn_save, cb_save);
+  make_bar_button(i18n::t(Str::kBack), -24, ui::theme::active.btn_back, cb_back);
+  make_bar_button(i18n::t(Str::kSettingsSave), -264, ui::theme::active.btn_save, cb_save);
   // Troisième bouton de la barre, à gauche des deux autres (les offsets sont
   // relatifs au bord droit et les boutons font 220 px + 20 de gouttière).
   make_bar_button(LV_SYMBOL_AUDIO " Micro / Debug", -504, ui::theme::active.btn_debug,
@@ -634,11 +662,11 @@ void create_screen(const ui::Callbacks &cbs) {
   // valider et redémarrer.
   lv_obj_t *hint = lv_label_create(s_form);
   lv_label_set_text(
-      hint, "Les reglages ci-dessous s'appliquent immediatement.");
+      hint, i18n::t(Str::kSettingsImmediateHint));
   lv_obj_set_style_text_font(hint, &montserrat_fr_24, 0);
   lv_obj_set_style_text_color(hint, lv_color_hex(ui::theme::active.dark_sub), 0);
 
-  lv_obj_t *row_bl = make_row("Luminosité", kRowH);
+  lv_obj_t *row_bl = make_row(i18n::t(Str::kSettingsBrightness), kRowH);
   s_slider_bl = lv_slider_create(row_bl);
   lv_obj_set_pos(s_slider_bl, kLabelW, 20);
   lv_obj_set_width(s_slider_bl, kScreenW - kLabelW - 220);
@@ -653,7 +681,7 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_label_set_text(s_lbl_bl, "");
   lv_obj_align(s_lbl_bl, LV_ALIGN_TOP_RIGHT, -16, 12);
 
-  lv_obj_t *row_dnd = make_row("Ne pas déranger", kRowH);
+  lv_obj_t *row_dnd = make_row(i18n::t(Str::kSettingsDnd), kRowH);
   s_sw_dnd = lv_switch_create(row_dnd);
   lv_obj_set_pos(s_sw_dnd, kLabelW, 8);
   lv_obj_set_size(s_sw_dnd, 90, 46);
@@ -681,7 +709,7 @@ void create_screen(const ui::Callbacks &cbs) {
   // ligne de plus sortirait une barre de défilement permanente. La carte reste
   // montée quand l'interrupteur est éteint — seul le journal cesse d'écrire.
   lv_obj_t *lbl_sdlog = lv_label_create(row_dnd);
-  lv_label_set_text(lbl_sdlog, "Journal SD");
+  lv_label_set_text(lbl_sdlog, i18n::t(Str::kSettingsSdLog));
   lv_obj_set_style_text_color(lbl_sdlog, lv_color_hex(ui::theme::active.dark_label), 0);
   lv_obj_set_style_text_font(lbl_sdlog, &montserrat_fr_24, 0);
   lv_obj_set_pos(lbl_sdlog, kLabelW + 560, 12);
@@ -691,7 +719,7 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_set_size(s_sw_sdlog, 90, 46);
   lv_obj_add_event_cb(s_sw_sdlog, cb_sd_log, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t *row_ring = make_row("Volume sonnerie", kRowH);
+  lv_obj_t *row_ring = make_row(i18n::t(Str::kSettingsRingVolume), kRowH);
   s_slider_ring = lv_slider_create(row_ring);
   lv_obj_set_pos(s_slider_ring, kLabelW, 20);
   lv_obj_set_width(s_slider_ring, 340);
@@ -718,7 +746,7 @@ void create_screen(const ui::Callbacks &cbs) {
 
   // Ligne dédiée au choix du WAV : elle pousse le formulaire au-delà de la
   // hauteur visible, la barre de défilement est donc désormais attendue.
-  lv_obj_t *row_file = make_row("Fichier sonnerie", kRowH);
+  lv_obj_t *row_file = make_row(i18n::t(Str::kSettingsRingFile), kRowH);
 
   s_dd_ringfile = lv_dropdown_create(row_file);
   lv_obj_set_pos(s_dd_ringfile, kLabelW, 4);
@@ -729,7 +757,7 @@ void create_screen(const ui::Callbacks &cbs) {
   // sans attendre la première ouverture.
   lv_obj_set_style_text_font(lv_dropdown_get_list(s_dd_ringfile),
                              &montserrat_fr_24, 0);
-  lv_dropdown_set_options_static(s_dd_ringfile, kInternalRing);
+  lv_dropdown_set_options_static(s_dd_ringfile, internal_ring_label());
   lv_obj_add_event_cb(s_dd_ringfile, cb_ring_file, LV_EVENT_VALUE_CHANGED,
                       nullptr);
 
@@ -749,27 +777,37 @@ void create_screen(const ui::Callbacks &cbs) {
 
   // Pris en compte au décroché suivant : l'AEC est créé une fois par appel,
   // dans la tâche micro, pas reconfiguré en pleine conversation.
-  lv_obj_t *row_echo = make_row("Annulation d'écho", kRowH);
+  lv_obj_t *row_echo = make_row(i18n::t(Str::kSettingsEcho), kRowH);
   s_dd_echo = lv_dropdown_create(row_echo);
   lv_obj_set_pos(s_dd_echo, kLabelW, 4);
   lv_obj_set_size(s_dd_echo, 560, 52);
   lv_obj_set_style_text_font(s_dd_echo, &montserrat_fr_24, 0);
   lv_obj_set_style_text_font(lv_dropdown_get_list(s_dd_echo),
                              &montserrat_fr_24, 0);
-  lv_dropdown_set_options_static(s_dd_echo, kEchoOptions);
+  lv_dropdown_set_options_static(s_dd_echo, echo_options());
   lv_obj_add_event_cb(s_dd_echo, cb_echo, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t *row_theme = make_row("Thème", kRowH);
+  lv_obj_t *row_theme = make_row(i18n::t(Str::kSettingsTheme), kRowH);
   s_dd_theme = lv_dropdown_create(row_theme);
   lv_obj_set_pos(s_dd_theme, kLabelW, 4);
   lv_obj_set_size(s_dd_theme, 560, 52);
   lv_obj_set_style_text_font(s_dd_theme, &montserrat_fr_24, 0);
   lv_obj_set_style_text_font(lv_dropdown_get_list(s_dd_theme),
                              &montserrat_fr_24, 0);
-  lv_dropdown_set_options_static(s_dd_theme, kThemeOptions);
+  lv_dropdown_set_options_static(s_dd_theme, theme_options());
   lv_obj_add_event_cb(s_dd_theme, cb_theme, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t *row_srv = make_row("Serveur de fichiers", kRowH);
+  lv_obj_t *row_lang = make_row(i18n::t(Str::kSettingsLanguage), kRowH);
+  s_dd_lang = lv_dropdown_create(row_lang);
+  lv_obj_set_pos(s_dd_lang, kLabelW, 4);
+  lv_obj_set_size(s_dd_lang, 560, 52);
+  lv_obj_set_style_text_font(s_dd_lang, &montserrat_fr_24, 0);
+  lv_obj_set_style_text_font(lv_dropdown_get_list(s_dd_lang),
+                             &montserrat_fr_24, 0);
+  lv_dropdown_set_options_static(s_dd_lang, kLangOptions);
+  lv_obj_add_event_cb(s_dd_lang, cb_lang, LV_EVENT_VALUE_CHANGED, nullptr);
+
+  lv_obj_t *row_srv = make_row(i18n::t(Str::kSettingsFileServer), kRowH);
   s_sw_filesrv = lv_switch_create(row_srv);
   lv_obj_set_pos(s_sw_filesrv, kLabelW, 8);
   lv_obj_set_size(s_sw_filesrv, 90, 46);
@@ -788,10 +826,10 @@ void create_screen(const ui::Callbacks &cbs) {
 
   s_ta_ssid = make_field("Wi-Fi SSID", settings::kSsidMax, false, false);
   s_ta_wifi_pass =
-      make_field("Wi-Fi mot de passe", settings::kPassMax, true, false);
+      make_field(i18n::t(Str::kSettingsWifiPassword), settings::kPassMax, true, false);
   // go2rtc + firmware served by Home Assistant. HA itself needs nothing here:
   // it discovers the board (ESPHome API over mDNS).
-  s_ta_host = make_field("Serveur (IP ou nom)", settings::kHostMax, false,
+  s_ta_host = make_field(i18n::t(Str::kSettingsServer), settings::kHostMax, false,
                          false);
 
   // Créé en dernier : le clavier doit passer au-dessus du formulaire.
@@ -874,6 +912,10 @@ void open_screen_from_event() {
                            static_cast<uint32_t>(prefs::echo_cancel()));
   lv_dropdown_set_selected(s_dd_theme,
                            static_cast<uint32_t>(prefs::ui_theme()));
+  // La préférence et non i18n::lang() : après un changement sans redémarrage,
+  // la liste doit montrer le choix enregistré, pas la langue encore affichée.
+  lv_dropdown_set_selected(s_dd_lang,
+                           static_cast<uint32_t>(prefs::language()));
   // Asynchrone : le balayage de la racine SD ne doit pas retarder l'affichage
   // de la page (cf. scan_ring_files_task). Le dropdown garde sa liste
   // précédente jusqu'au retour de la tâche — quelques dizaines de ms plus tard,
@@ -882,8 +924,8 @@ void open_screen_from_event() {
   sync_ring_test_btn();
 
   lv_label_set_text(s_status, settings::provisioned()
-                                  ? "Configuration chargee depuis la NVS"
-                                  : "Valeurs par defaut compilees");
+                                  ? i18n::t(Str::kSettingsFromNvs)
+                                  : i18n::t(Str::kSettingsDefaults));
   lv_obj_set_style_text_color(s_status, lv_color_hex(ui::theme::active.dark_sub), 0);
 
   hide_keyboard();

@@ -14,6 +14,7 @@
 
 #include "bsp.h"
 #include "lvgl.h"
+#include "sys/i18n.h"
 #include "sys/prefs.h"
 #include "net/wifi_net.h"
 #include "net/esphome_api.h"
@@ -22,6 +23,8 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_24);
 LV_FONT_DECLARE(montserrat_fr_36);
@@ -295,10 +298,10 @@ void create_screens(const Callbacks &cbs) {
   lv_obj_add_event_cb(s_home_scr, cb_home_screen_event,
                       LV_EVENT_SCREEN_UNLOADED, NULL);
 
-  make_home_tile(icon::kVideo, "Caméra", 0, 0, ui::theme::active.tile_camera, cb_show_camera_v2);
-  make_home_tile(icon::kCloudSun, "Météo", 1, 0, ui::theme::active.tile_weather, cb_show_weather);
-  make_home_tile(icon::kCalendar, "Agenda", 2, 0, ui::theme::active.tile_agenda, cb_show_agenda);
-  s_gate_tile = make_home_tile(icon::kGate, "Portail", 3, 0,
+  make_home_tile(icon::kVideo, i18n::t(Str::kHomeCamera), 0, 0, ui::theme::active.tile_camera, cb_show_camera_v2);
+  make_home_tile(icon::kCloudSun, i18n::t(Str::kHomeWeather), 1, 0, ui::theme::active.tile_weather, cb_show_weather);
+  make_home_tile(icon::kCalendar, i18n::t(Str::kHomeCalendar), 2, 0, ui::theme::active.tile_agenda, cb_show_agenda);
+  s_gate_tile = make_home_tile(icon::kGate, i18n::t(Str::kHomeGate), 3, 0,
                                ui::theme::active.gate_off, cb_gate_tile);
   // Enfants de make_home_tile : 0 = pastille d'icône, 1 = libellé.
   s_gate_lbl = lv_obj_get_child(s_gate_tile, 1);
@@ -315,10 +318,10 @@ void create_screens(const Callbacks &cbs) {
   // Désactivée = même couleur un peu éteinte, pas le gris du thème LVGL.
   lv_obj_set_style_bg_opa(s_gate_tile, LV_OPA_60, LV_STATE_DISABLED);
   update_gate_tile_locked(true);
-  make_home_tile(LV_SYMBOL_CALL, "Appels", 0, 1, ui::theme::active.tile_calls, cb_show_calls);
-  make_home_tile(LV_SYMBOL_SETTINGS, "Configuration", 1, 1, ui::theme::active.tile_settings,
+  make_home_tile(LV_SYMBOL_CALL, i18n::t(Str::kHomeCalls), 0, 1, ui::theme::active.tile_calls, cb_show_calls);
+  make_home_tile(LV_SYMBOL_SETTINGS, i18n::t(Str::kHomeSettings), 1, 1, ui::theme::active.tile_settings,
                  cb_show_settings);
-  make_home_tile(LV_SYMBOL_POWER, "Éteindre l'écran", 2, 1, ui::theme::active.tile_power,
+  make_home_tile(LV_SYMBOL_POWER, i18n::t(Str::kHomeScreenOff), 2, 1, ui::theme::active.tile_power,
                  cb_power_off);
 
   ui_stats::attach(s_home_scr); // overlay FPS/CPU/RAM (bas-droite)

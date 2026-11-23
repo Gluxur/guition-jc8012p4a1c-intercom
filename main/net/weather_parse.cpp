@@ -6,6 +6,7 @@
 // beyond the log.
 
 #include "net/weather.h"
+#include "sys/i18n.h"
 
 #include "cJSON.h"
 #include "esp_log.h"
@@ -17,8 +18,6 @@ namespace weather {
 
 static const char *TAG = "weather";
 
-static constexpr const char *kFrDays[7] = {"Dim", "Lun", "Mar", "Mer",
-                                           "Jeu", "Ven", "Sam"};
 
 // Howard Hinnant, "chrono-compatible low-level date algorithms" :
 // jours depuis l'époque civile -> jour de semaine, 0 = dimanche.
@@ -80,7 +79,8 @@ bool parse_forecast_json(const char *json, Forecast &out) {
       int y = 0, mo = 0, d = 0;
       if (cJSON_IsString(t) &&
           sscanf(t->valuestring, "%d-%d-%d", &y, &mo, &d) == 3)
-        strlcpy(df.day, kFrDays[weekday_from_civil(y, mo, d)], sizeof df.day);
+        strlcpy(df.day, i18n::weekday_abbr(weekday_from_civil(y, mo, d)),
+                sizeof df.day);
       ESP_LOGD(TAG, "J+%d: %s max=%.1f min=%.1f cond=%s", i, df.day,
                df.temp_max, df.temp_min, df.condition);
     }

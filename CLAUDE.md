@@ -108,6 +108,12 @@ pitfalls — most "arbitrary" constants are justified there).
   no-op and `present_frame()` does not take the LVGL mutex.
 - Sliders (volume, gain, brightness): applied on every change, **persisted in
   NVS on release only**.
+- **Texts**: no user-visible literal in code, except terms identical in every
+  language ("Visiophone", "Wi-Fi SSID", "Firmware"). Add a key to `i18n::Str`, its
+  text to **both** `main/sys/lang/fr.h` and `en.h`, call `i18n::t(Str::kX)`.
+  No `LV_SYMBOL_*` in the language files (compose `"%s %s"` at the call
+  site). A format string keeps the same conversions in every language (checked
+  at compile time). Log messages are not UI texts: they stay as they are.
 
 ## 4. Configuration
 

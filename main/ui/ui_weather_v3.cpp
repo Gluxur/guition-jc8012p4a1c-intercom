@@ -15,11 +15,14 @@
 #include "net/wifi_net.h"
 #include "net/esphome_api.h"
 #include "sys/prefs.h"
+#include "sys/i18n.h"
 #include "theme.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+
+using i18n::Str;
 
 // Écran météo "V3" : carte du jour (haut) + bande de 6 prévisions (bas), thème
 // CLAIR sobre et professionnel. Réutilise 100% de la couche données
@@ -110,18 +113,6 @@ static constexpr int kEventLines = 12;
 static constexpr int64_t kNextHorizonS = 30LL * 24 * 3600;
 static constexpr int32_t kEventsPad = 8;  // pad vertical des pastilles agenda
 static constexpr int32_t kEventsGap = 10; // écart entre les deux pastilles
-
-// Noms FR (SNTP fournit tm_wday 0=dimanche, tm_mon 0=janvier).
-static const char *kWeekFr[7] = {"Dimanche", "Lundi",    "Mardi", "Mercredi",
-                                 "Jeudi",    "Vendredi", "Samedi"};
-static const char *kMonthFr[12] = {
-    "janvier", "février", "mars",      "avril",   "mai",      "juin",
-    "juillet", "août",    "septembre", "octobre", "novembre", "décembre"};
-static const char *kWeekShortFr[7] = {"dim.", "lun.", "mar.", "mer.",
-                                      "jeu.", "ven.", "sam."};
-static const char *kMonthShortFr[12] = {"janv.", "févr.", "mars", "avr.",
-                                        "mai",   "juin",  "juil.", "août",
-                                        "sept.", "oct.",  "nov.", "déc."};
 
 // --- Palette thème clair ----------------------------------------------------
 static const uint32_t &kBg = ui::theme::active.bg; // fond général gris-bleu très clair
@@ -305,31 +296,31 @@ static const CondIcon &cond_icon(const char *c) {
   return kFallback;
 }
 
-static const char *cond_label_fr(const char *c) {
+static const char *cond_label(const char *c) {
   struct L {
     const char *k;
-    const char *fr;
+    Str label;
   };
   static const L kL[] = {
-      {"sunny", "Ensoleillé"},
-      {"clear-night", "Ciel dégagé"},
-      {"partlycloudy", "Éclaircies"},
-      {"cloudy", "Nuageux"},
-      {"fog", "Brouillard"},
-      {"rainy", "Pluie"},
-      {"pouring", "Fortes pluies"},
-      {"snowy", "Neige"},
-      {"snowy-rainy", "Pluie et neige"},
-      {"hail", "Grêle"},
-      {"lightning", "Orages"},
-      {"lightning-rainy", "Orages pluvieux"},
-      {"windy", "Venteux"},
-      {"windy-variant", "Venteux"},
-      {"exceptional", "Conditions extrêmes"},
+      {"sunny", Str::kWeatherSunny},
+      {"clear-night", Str::kWeatherClearNight},
+      {"partlycloudy", Str::kWeatherPartlyCloudy},
+      {"cloudy", Str::kWeatherCloudy},
+      {"fog", Str::kWeatherFog},
+      {"rainy", Str::kWeatherRainy},
+      {"pouring", Str::kWeatherPouring},
+      {"snowy", Str::kWeatherSnowy},
+      {"snowy-rainy", Str::kWeatherSnowyRainy},
+      {"hail", Str::kWeatherHail},
+      {"lightning", Str::kWeatherLightning},
+      {"lightning-rainy", Str::kWeatherLightningRainy},
+      {"windy", Str::kWeatherWindy},
+      {"windy-variant", Str::kWeatherWindy},
+      {"exceptional", Str::kWeatherExceptional},
   };
   for (const L &l : kL)
     if (strcmp(l.k, c) == 0)
-      return l.fr;
+      return i18n::t(l.label);
   return "";
 }
 
@@ -367,11 +358,18 @@ static void update_clock_locked() {
   if (t.tm_yday != s_shown_yday) {
     s_shown_yday = t.tm_yday;
     char d[48];
-    snprintf(d, sizeof d, "%s %d %s", kWeekFr[t.tm_wday], t.tm_mday,
-             kMonthFr[t.tm_mon]);
+    if (i18n::month_before_day())
+      snprintf(d, sizeof d, "%s, %s %d", i18n::weekday_long(t.tm_wday),
+               i18n::month_long(t.tm_mon), t.tm_mday);
+    else
+      snprintf(d, sizeof d, "%s %d %s", i18n::weekday_long(t.tm_wday),
+               t.tm_mday, i18n::month_long(t.tm_mon));
     lv_label_set_text(s_hero.date, d);
-    lv_label_set_text(s_hero.saint,
-                      ephemeris::saint_of_day(t.tm_mon, t.tm_mday));
+    // Éphéméride du calendrier catholique français : sans équivalent en
+    // anglais, la ligne reste vide plutôt que de mêler les deux langues.
+    lv_label_set_text(s_hero.saint, i18n::lang() == i18n::Lang::kFr
+                                        ? ephemeris::saint_of_day(t.tm_mon, t.tm_mday)
+                                        : "");
   }
   char hm[8];
   snprintf(hm, sizeof hm, "%02d:%02d", t.tm_hour, t.tm_min);
@@ -423,9 +421,9 @@ static void format_event_item(const gcal::Event &e, int64_t day_start,
   if (gcal::starts_before_day(e, day_start, utc_day)) {
     // Événement de plusieurs jours entamé avant aujourd'hui : son heure de
     // début n'a pas lieu ce jour-ci.
-    snprintf(dst, n, "En cours — %s", e.summary);
+    snprintf(dst, n, i18n::t(Str::kWeatherOngoingFmt), e.summary);
   } else if (e.all_day) {
-    snprintf(dst, n, "Toute la journée — %s", e.summary);
+    snprintf(dst, n, i18n::t(Str::kWeatherAllDayFmt), e.summary);
   } else {
     time_t t = static_cast<time_t>(e.start_epoch_s);
     struct tm lt;
@@ -492,11 +490,18 @@ static void update_events_locked() {
     else
       localtime_r(&t, &nt);
     char tag[48];
-    snprintf(tag, sizeof tag, "PROCHAIN · %s %d %s", kWeekShortFr[nt.tm_wday],
-             nt.tm_mday, kMonthShortFr[nt.tm_mon]);
+    if (i18n::month_before_day())
+      snprintf(tag, sizeof tag, "%s · %s %s %d", i18n::t(Str::kWeatherNext),
+               i18n::weekday_short(nt.tm_wday), i18n::month_short(nt.tm_mon),
+               nt.tm_mday);
+    else
+      snprintf(tag, sizeof tag, "%s · %s %d %s", i18n::t(Str::kWeatherNext),
+               i18n::weekday_short(nt.tm_wday), nt.tm_mday,
+               i18n::month_short(nt.tm_mon));
     lv_label_set_text(s_hero.next_tag, tag);
     if (next->all_day)
-      snprintf(item, sizeof item, "Toute la journée — %s", next->summary);
+      snprintf(item, sizeof item, i18n::t(Str::kWeatherAllDayFmt),
+               next->summary);
     else
       snprintf(item, sizeof item, "%02d:%02d — %s", nt.tm_hour, nt.tm_min,
                next->summary);
@@ -545,7 +550,8 @@ static void update_events_locked() {
     if (i < listed)
       format_event_item(*today[i], day_start, utc_day, item, sizeof item);
     else
-      snprintf(item, sizeof item, "+%d autres", shown - listed);
+      snprintf(item, sizeof item, i18n::t(Str::kWeatherMoreFmt),
+               shown - listed);
     lv_obj_t *line = s_hero.today_lines[i];
     lv_label_set_text(line, item);
     lv_obj_set_style_text_font(line, font, 0);
@@ -682,8 +688,12 @@ static void update_missed_locked() {
     return;
   }
   char buf[48];
-  snprintf(buf, sizeof buf, "%lu appel%s manqué%s", (unsigned long)n,
-           n > 1 ? "s" : "", n > 1 ? "s" : "");
+  // Singulier / pluriel : deux entrées, la règle de chaque langue est dans
+  // son texte (le français accorde deux mots, l'anglais un).
+  snprintf(buf, sizeof buf,
+           n > 1 ? i18n::t(Str::kWeatherMissedManyFmt)
+                 : i18n::t(Str::kWeatherMissedOneFmt),
+           (unsigned long)n);
   lv_label_set_text(s_missed_lbl, buf);
   lv_obj_remove_flag(s_missed_box, LV_OBJ_FLAG_HIDDEN);
 }
@@ -765,7 +775,7 @@ static void refresh_locked() {
 
   // --- Carte du jour (hero) -------------------------------------------------
   queue_icon_locked(s_hero.icon, cond_icon(cond));
-  lv_label_set_text(s_hero.cond, cond_label_fr(cond));
+  lv_label_set_text(s_hero.cond, cond_label(cond));
 
   char buf[64];
   // Max/min du jour = premier jour de la prévision (days[0]).
@@ -792,7 +802,8 @@ static void refresh_locked() {
   else
     snprintf(w, sizeof w, "--");
   char meta[64];
-  snprintf(meta, sizeof meta, "Humidité %s     ·     Vent %s", h, w);
+  snprintf(meta, sizeof meta,
+           i18n::t(Str::kWeatherMetaFmt), h, w);
   lv_label_set_text(s_hero.meta, meta);
 
   // --- Bande des 6 jours suivants (days[1..6]) ------------------------------
@@ -839,7 +850,7 @@ static void on_fetch_done(bool ok) {
     }
     refresh_locked();
   } else {
-    lv_label_set_text(s_status, "Erreur météo");
+    lv_label_set_text(s_status, i18n::t(Str::kWeatherError));
   }
 }
 
@@ -864,7 +875,7 @@ static void cb_screen_event(lv_event_t *e) {
     refresh_locked();
     update_clock_locked();
     if (weather::cache_stale(kCacheMaxAgeUs)) {
-      lv_label_set_text(s_status, "Chargement...");
+      lv_label_set_text(s_status, i18n::t(Str::kLoading));
       weather::fetch_async(on_fetch_done);
     }
     {
@@ -1216,7 +1227,7 @@ void create_screen() {
   lv_obj_set_style_pad_row(s_hero.events_col, kEventsGap, 0);
 
   s_hero.today_badge = make_events_badge(kWarm, 0xFFFFFF, &s_hero.today_tag);
-  lv_label_set_text(s_hero.today_tag, "AUJOURD'HUI");
+  lv_label_set_text(s_hero.today_tag, i18n::t(Str::kWeatherToday));
   for (lv_obj_t *&line : s_hero.today_lines) {
     line = make_event_line(s_hero.today_badge);
     lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
@@ -1332,7 +1343,7 @@ void create_screen() {
   lv_obj_set_style_radius(view_btn, 16, 0);
   lv_obj_set_style_shadow_width(view_btn, 0, 0);
   lv_obj_t *view_lbl = lv_label_create(view_btn);
-  lv_label_set_text(view_lbl, "Voir");
+  lv_label_set_text(view_lbl, i18n::t(Str::kWeatherView));
   lv_obj_set_style_text_font(view_lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(view_lbl, lv_color_white(), 0);
   lv_obj_center(view_lbl);
@@ -1347,7 +1358,7 @@ void create_screen() {
   lv_obj_set_style_border_color(close_btn, lv_color_hex(kHair), 0);
   lv_obj_set_style_shadow_width(close_btn, 0, 0);
   lv_obj_t *close_lbl = lv_label_create(close_btn);
-  lv_label_set_text(close_lbl, "Fermer");
+  lv_label_set_text(close_lbl, i18n::t(Str::kClose));
   lv_obj_set_style_text_font(close_lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(close_lbl, lv_color_hex(kInk), 0);
   lv_obj_center(close_lbl);

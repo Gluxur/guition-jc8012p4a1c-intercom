@@ -3,12 +3,15 @@
 #include "bsp.h"
 #include "lvgl.h"
 #include "net/gcal.h"
+#include "sys/i18n.h"
 #include "theme.h"
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_16);
 LV_FONT_DECLARE(montserrat_fr_24);
@@ -39,11 +42,6 @@ const uint32_t &kOutInk = ui::theme::active.out_ink;
 
 enum class Mode { kWeek, kMonth };
 
-const char *kWeekFrShort[7] = {"Lun", "Mar", "Mer", "Jeu",
-                               "Ven", "Sam", "Dim"};
-const char *kMonthFr[12] = {"janvier", "février",   "mars",     "avril",
-                            "mai",     "juin",      "juillet",  "août",
-                            "septembre", "octobre", "novembre", "décembre"};
 
 lv_obj_t *s_scr = nullptr;
 lv_obj_t *s_range_lbl = nullptr;
@@ -197,7 +195,8 @@ void format_event_line(const gcal::Event &e, bool continued, char *dst,
                        size_t cap) {
   // summary vide = événement importé sans titre : sans repli la ligne se
   // réduirait à une heure orpheline, illisible dans une colonne étroite.
-  const char *title = (e.summary[0] != '\0') ? e.summary : "(sans titre)";
+  const char *title = (e.summary[0] != '\0') ? e.summary
+                                              : i18n::t(Str::kAgendaUntitled);
   if (continued) {
     snprintf(dst, cap, "» %s", title);
     return;
@@ -244,22 +243,34 @@ void refresh_range_label_locked() {
     struct tm l0, l1;
     localtime_r(&t0, &l0);
     localtime_r(&t1, &l1);
-    if (l0.tm_mon == l1.tm_mon)
+    // L'ordre jour/mois appartient à la langue (cf. i18n::month_before_day).
+    const bool en = i18n::month_before_day();
+    if (l0.tm_mon == l1.tm_mon && en)
+      snprintf(buf, sizeof buf, "%s %d - %d, %d", i18n::month_long(l0.tm_mon),
+               l0.tm_mday, l1.tm_mday, l0.tm_year + 1900);
+    else if (l0.tm_mon == l1.tm_mon)
       snprintf(buf, sizeof buf, "%d - %d %s %d", l0.tm_mday, l1.tm_mday,
-               kMonthFr[l0.tm_mon], l0.tm_year + 1900);
+               i18n::month_long(l0.tm_mon), l0.tm_year + 1900);
+    else if (en)
+      snprintf(buf, sizeof buf, "%s %d - %s %d", i18n::month_long(l0.tm_mon),
+               l0.tm_mday, i18n::month_long(l1.tm_mon), l1.tm_mday);
     else
       snprintf(buf, sizeof buf, "%d %s - %d %s", l0.tm_mday,
-               kMonthFr[l0.tm_mon], l1.tm_mday, kMonthFr[l1.tm_mon]);
+               i18n::month_long(l0.tm_mon), l1.tm_mday,
+               i18n::month_long(l1.tm_mon));
   } else {
     time_t t = static_cast<time_t>(month_start(s_anchor_s));
     struct tm lt;
     localtime_r(&t, &lt);
-    snprintf(buf, sizeof buf, "%s %d", kMonthFr[lt.tm_mon], lt.tm_year + 1900);
+    snprintf(buf, sizeof buf, "%s %d", i18n::month_long(lt.tm_mon),
+             lt.tm_year + 1900);
   }
   lv_label_set_text(s_range_lbl, buf);
-  lv_label_set_text(s_mode_lbl, s_mode == Mode::kWeek
-                                    ? LV_SYMBOL_LIST " Mois"
-                                    : LV_SYMBOL_LIST " Semaine");
+  // Icônes hors des tables de langue : elles ne se traduisent pas, et les
+  // tables restent compilables sur host sans LVGL.
+  lv_label_set_text_fmt(s_mode_lbl, "%s %s", LV_SYMBOL_LIST,
+                        s_mode == Mode::kWeek ? i18n::t(Str::kAgendaMonth)
+                                              : i18n::t(Str::kAgendaWeek));
 }
 
 void rebuild_week_locked(const gcal::EventList &l) {
@@ -272,7 +283,9 @@ void rebuild_week_locked(const gcal::EventList &l) {
     struct tm lt;
     localtime_r(&t, &lt);
     char day_buf[16];
-    snprintf(day_buf, sizeof day_buf, "%s %d", kWeekFrShort[i], lt.tm_mday);
+    // i = 0 est le lundi (week_start) ; tm_wday compte depuis dimanche.
+    snprintf(day_buf, sizeof day_buf, "%s %d", i18n::weekday_abbr((i + 1) % 7),
+             lt.tm_mday);
     lv_label_set_text(s_week_cols[i].day, day_buf);
 
     // Repère du jour : dans une grille de 7 colonnes identiques, rien ne dit
@@ -476,7 +489,8 @@ void create_screen() {
   lv_obj_set_style_bg_color(s_scr, lv_color_hex(kBg), 0);
 
   lv_obj_t *title = lv_label_create(s_scr);
-  lv_label_set_text(title, LV_SYMBOL_LIST " Agenda");
+  lv_label_set_text_fmt(title, "%s %s", LV_SYMBOL_LIST,
+                        i18n::t(Str::kHomeCalendar));
   lv_obj_set_style_text_color(title, lv_color_hex(kInk), 0);
   lv_obj_set_style_text_font(title, &montserrat_fr_36, 0);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, 24, 16);

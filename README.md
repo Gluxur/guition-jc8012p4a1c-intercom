@@ -17,8 +17,9 @@ encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
 - **Status**: in daily use on one installation. Shared as-is, as a working
   reference for anyone building an intercom on this board.
 
-> The on-screen UI and code comments are in **French**; all documentation is in
-> English. The comments explain *why* (hardware constraints, measurements) and
+> The on-screen UI is in **French or English** (Settings → Langue / Language,
+> applied at the next restart); code comments are in French and all
+> documentation is in English. The comments explain *why* (hardware constraints, measurements) and
 > are worth running through a translator before changing a magic number.
 
 ---
@@ -47,7 +48,7 @@ encryption key is provisioned by HA). Everything stays on your LAN, no cloud.
 
 **Idle display**
 - **Weather**: today + 7 days, animated Lottie icons (meteocons), clock,
-  today's events, saint of the day (French calendar).
+  today's events, saint of the day (French calendar; hidden in English).
 - **Calendar**: week and month views (any HA `calendar.*` entity, e.g. Google
   Calendar through the native HA integration — no OAuth on the device).
 - **Presence detection** with the tablet's own front camera (OV02C10),

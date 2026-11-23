@@ -24,6 +24,7 @@
 #include "net/esphome_api.h"
 #include "net/file_server.h"
 #include "net/wifi_net.h"
+#include "sys/i18n.h"
 #include "sys/ota_ctrl.h"
 #include "sys/prefs.h"
 #include "sys/sd_log.h"
@@ -32,6 +33,8 @@
 #include "sys/usb_msc.h"
 #include "ui/ui.h"
 #include "ui/ui_camera_v2.h"
+
+using i18n::Str;
 
 namespace ha_api {
 namespace {
@@ -161,23 +164,47 @@ void s_mic_gain(float f) {
 
 // Labels in prefs::EchoCancel order: the index IS the setting, as in the
 // dropdown of the Settings page.
-const char *const kEchoLabels[] = {"Desactivee", "Economique",
-                                   "Haute performance"};
+const Str kEchoLabels[] = {Str::kHaEchoOff, Str::kHaEchoLowCost,
+                           Str::kHaEchoHighPerf};
+
+// The list HA was given (esphome_api translates it the same way).
+const char *echo_label(size_t i) { return i18n::t(kEchoLabels[i]); }
 
 void g_echo(char *o, size_t c) {
-  snprintf(o, c, "%s", kEchoLabels[static_cast<int>(prefs::echo_cancel())]);
+  snprintf(o, c, "%s", echo_label(static_cast<size_t>(prefs::echo_cancel())));
 }
 void s_echo(const char *v) {
   for (size_t i = 0; i < sizeof(kEchoLabels) / sizeof(kEchoLabels[0]); i++) {
-    if (strcmp(v, kEchoLabels[i]) == 0) {
+    if (strcmp(v, echo_label(i)) == 0) {
       prefs::set_echo_cancel(static_cast<prefs::EchoCancel>(i));
       return;
     }
   }
 }
 
+// Page ids, not labels: automations select them by value, so they stay the
+// same in every language.
 const char *const kPages[] = {"accueil",       "meteo", "agenda", "appels",
                               "configuration", "autre"};
+
+// Language: options are each language's own name, identical in both lists.
+// Persisted only — the UI and this catalogue are built at boot (sys/i18n),
+// so it takes effect at the next restart, as the entity name says.
+const char *const kLangs[] = {"Francais", "English"};
+static_assert(sizeof(kLangs) / sizeof(kLangs[0]) ==
+              static_cast<size_t>(i18n::kLastLang) + 1);
+
+void g_lang(char *o, size_t c) {
+  snprintf(o, c, "%s", i18n::language_name(prefs::language()));
+}
+void s_lang(const char *v) {
+  for (size_t i = 0; i < sizeof(kLangs) / sizeof(kLangs[0]); i++) {
+    if (strcmp(v, kLangs[i]) == 0) {
+      prefs::set_language(static_cast<i18n::Lang>(i));
+      return;
+    }
+  }
+}
 
 void g_page(char *o, size_t c) { snprintf(o, c, "%s", ui::current_page()); }
 
@@ -227,7 +254,8 @@ void p_ota_sd() { ota_ctrl::request_file(cfg::kOtaSdDefaultPath); }
 void g_update(esphome_api::UpdateState *u) {
   const esp_app_desc_t *d = esp_app_get_description();
   snprintf(u->current, sizeof u->current, "%s", d ? d->version : "unknown");
-  snprintf(u->title, sizeof u->title, "Visiophone firmware");
+  snprintf(u->title, sizeof u->title, "%s",
+           i18n::t(Str::kHaUpdateTitle));
   u->in_progress = ota_ctrl::in_progress();
   const int pct = ota_ctrl::progress();
   u->progress = pct >= 0 ? (float)pct : -1.0f;
@@ -337,27 +365,28 @@ void s_calendar_id(const char *v) {
 
 // --- Table ---------------------------------------------------------------------
 
-// Entity names stay in French: they are what the household reads in HA.
+// Entity names follow the UI language (sys/lang, fixed at boot). Changing a
+// name only renames the entity in HA; its entity_id and history stay.
 // object_ids are the stable identifiers HA builds unique_ids from: never
 // rename one without expecting a new entity on the HA side.
 const Entity kEntities[] = {
     // --- Controls ----------------------------------------------------------
     {.kind = Kind::kLight,
      .object_id = "screen",
-     .name = "Ecran",
+     .name = Str::kHaEntScreen,
      .icon = "mdi:tablet",
      .get_bool = g_screen_on,
      .get_float = g_screen_bri,
      .set_light = s_screen},
     {.kind = Kind::kSwitch,
      .object_id = "dnd",
-     .name = "Ne pas deranger",
+     .name = Str::kHaEntDnd,
      .icon = "mdi:bell-off",
      .get_bool = g_dnd,
      .set_bool = s_dnd},
     {.kind = Kind::kSelect,
      .object_id = "page",
-     .name = "Page affichee",
+     .name = Str::kHaEntPage,
      .icon = "mdi:monitor",
      .options = kPages,
      .option_count = sizeof(kPages) / sizeof(kPages[0]),
@@ -366,15 +395,24 @@ const Entity kEntities[] = {
     // Applied at the next pick-up (cf. prefs::echo_cancel).
     {.kind = Kind::kSelect,
      .object_id = "echo_cancel",
-     .name = "Annulation d'echo",
+     .name = Str::kHaEntEchoCancel,
      .icon = "mdi:account-voice",
-     .options = kEchoLabels,
+     .option_names = kEchoLabels,
      .option_count = sizeof(kEchoLabels) / sizeof(kEchoLabels[0]),
      .get_text = g_echo,
      .set_text = s_echo},
+    {.kind = Kind::kSelect,
+     .object_id = "language",
+     .name = Str::kHaEntLanguage,
+     .icon = "mdi:translate",
+     .category = Category::kConfig,
+     .options = kLangs,
+     .option_count = sizeof(kLangs) / sizeof(kLangs[0]),
+     .get_text = g_lang,
+     .set_text = s_lang},
     {.kind = Kind::kNumber,
      .object_id = "ring_volume",
-     .name = "Volume sonnerie",
+     .name = Str::kHaEntRingVolume,
      .icon = "mdi:volume-high",
      .unit = "%",
      .min = 0,
@@ -384,7 +422,7 @@ const Entity kEntities[] = {
      .set_float = s_ring_volume},
     {.kind = Kind::kNumber,
      .object_id = "speaker_volume",
-     .name = "Volume haut-parleur",
+     .name = Str::kHaEntSpeakerVolume,
      .icon = "mdi:speaker",
      .unit = "%",
      .min = 0,
@@ -394,7 +432,7 @@ const Entity kEntities[] = {
      .set_float = s_speaker_volume},
     {.kind = Kind::kNumber,
      .object_id = "mic_gain",
-     .name = "Gain micro",
+     .name = Str::kHaEntMicGain,
      .icon = "mdi:microphone",
      .unit = "%",
      .min = 0,
@@ -404,26 +442,26 @@ const Entity kEntities[] = {
      .set_float = s_mic_gain},
     {.kind = Kind::kSwitch,
      .object_id = "camera",
-     .name = "Camera sans sonnerie",
+     .name = Str::kHaEntCamera,
      .icon = "mdi:cctv",
      .category = Category::kConfig,
      .get_bool = g_call,
      .set_bool = s_camera},
     {.kind = Kind::kSwitch,
      .object_id = "show_stats",
-     .name = "Overlay statistiques",
+     .name = Str::kHaEntShowStats,
      .category = Category::kConfig,
      .get_bool = g_stats,
      .set_bool = s_stats},
     {.kind = Kind::kSwitch,
      .object_id = "sd_log",
-     .name = "Journal carte SD",
+     .name = Str::kHaEntSdLog,
      .category = Category::kConfig,
      .get_bool = g_sdlog,
      .set_bool = s_sdlog},
     {.kind = Kind::kSwitch,
      .object_id = "file_server",
-     .name = "Serveur de fichiers",
+     .name = Str::kHaEntFileServer,
      .icon = "mdi:folder-network",
      .category = Category::kConfig,
      .get_bool = g_filesrv,
@@ -434,29 +472,29 @@ const Entity kEntities[] = {
     // rings (ringtone, street ding-dong, call log, missed-call snapshot).
     {.kind = Kind::kButton,
      .object_id = "ring",
-     .name = "Sonner",
+     .name = Str::kHaEntRing,
      .icon = "mdi:doorbell",
      .press = p_ring},
     {.kind = Kind::kButton,
      .object_id = "ack_missed",
-     .name = "Acquitter les appels manques",
+     .name = Str::kHaEntAckMissed,
      .icon = "mdi:phone-check",
      .press = p_ack_missed},
     {.kind = Kind::kButton,
      .object_id = "reboot",
-     .name = "Redemarrer",
+     .name = Str::kHaEntReboot,
      .device_class = "restart",
      .category = Category::kConfig,
      .press = p_reboot},
     {.kind = Kind::kButton,
      .object_id = "ota_sd",
-     .name = "Mettre a jour depuis la carte SD",
+     .name = Str::kHaEntOtaSd,
      .device_class = "update",
      .category = Category::kConfig,
      .press = p_ota_sd},
     {.kind = Kind::kButton,
      .object_id = "presence_snapshot",
-     .name = "Cliche camera de presence (SD)",
+     .name = Str::kHaEntPresenceSnapshot,
      .icon = "mdi:camera",
      .category = Category::kDiagnostic,
      .press = p_presence_snapshot},
@@ -464,52 +502,52 @@ const Entity kEntities[] = {
     // --- Sensors -----------------------------------------------------------
     {.kind = Kind::kSensor,
      .object_id = "rssi",
-     .name = "RSSI Wi-Fi",
+     .name = Str::kHaEntRssi,
      .device_class = "signal_strength",
      .unit = "dBm",
      .category = Category::kDiagnostic,
      .get_float = g_rssi},
     {.kind = Kind::kTextSensor,
      .object_id = "ip",
-     .name = "Adresse IP",
+     .name = Str::kHaEntIp,
      .icon = "mdi:ip-network",
      .category = Category::kDiagnostic,
      .get_text = g_ip},
     {.kind = Kind::kSensor,
      .object_id = "uptime",
-     .name = "Duree de fonctionnement",
+     .name = Str::kHaEntUptime,
      .device_class = "duration",
      .unit = "s",
      .category = Category::kDiagnostic,
      .get_float = g_uptime},
     {.kind = Kind::kSensor,
      .object_id = "psram",
-     .name = "PSRAM utilisee",
+     .name = Str::kHaEntPsram,
      .unit = "%",
      .category = Category::kDiagnostic,
      .get_float = g_psram},
     {.kind = Kind::kSensor,
      .object_id = "sram_free",
-     .name = "SRAM interne libre",
+     .name = Str::kHaEntSramFree,
      .device_class = "data_size",
      .unit = "B",
      .category = Category::kDiagnostic,
      .get_float = g_sram_free},
     {.kind = Kind::kSensor,
      .object_id = "cpu0",
-     .name = "Charge CPU coeur 0",
+     .name = Str::kHaEntCpu0,
      .unit = "%",
      .category = Category::kDiagnostic,
      .get_float = g_cpu0},
     {.kind = Kind::kSensor,
      .object_id = "cpu1",
-     .name = "Charge CPU coeur 1",
+     .name = Str::kHaEntCpu1,
      .unit = "%",
      .category = Category::kDiagnostic,
      .get_float = g_cpu1},
     {.kind = Kind::kSensor,
      .object_id = "sd_free",
-     .name = "Espace libre carte SD",
+     .name = Str::kHaEntSdFree,
      .unit = "MB",
      .category = Category::kDiagnostic,
      .get_float = g_sd_free,
@@ -517,19 +555,19 @@ const Entity kEntities[] = {
     // Not diagnostic: usage information, not maintenance.
     {.kind = Kind::kSensor,
      .object_id = "missed_calls",
-     .name = "Appels manques",
+     .name = Str::kHaEntMissedCalls,
      .icon = "mdi:phone-missed",
      .get_float = g_missed},
     {.kind = Kind::kTextSensor,
      .object_id = "fw_version",
-     .name = "Version du firmware",
+     .name = Str::kHaEntFwVersion,
      .category = Category::kDiagnostic,
      .get_text = g_fw},
     // Entity ids used by the tablet, edited here instead of at build time.
     // max_len 127: integration-generated ids get long (ha_entity_id::kMax).
     {.kind = Kind::kText,
      .object_id = "gate_entity",
-     .name = "Entite portail",
+     .name = Str::kHaEntGateEntity,
      .icon = "mdi:gate",
      .category = Category::kConfig,
      .get_text = g_gate_id,
@@ -538,7 +576,7 @@ const Entity kEntities[] = {
      .pattern = ha_entity_id::kCoverPattern},
     {.kind = Kind::kText,
      .object_id = "weather_entity",
-     .name = "Entite meteo",
+     .name = Str::kHaEntWeatherEntity,
      .icon = "mdi:weather-partly-cloudy",
      .category = Category::kConfig,
      .get_text = g_weather_id,
@@ -547,7 +585,7 @@ const Entity kEntities[] = {
      .pattern = ha_entity_id::kWeatherPattern},
     {.kind = Kind::kText,
      .object_id = "calendar_entity",
-     .name = "Entite agenda",
+     .name = Str::kHaEntCalendarEntity,
      .icon = "mdi:calendar",
      .category = Category::kConfig,
      .get_text = g_calendar_id,
@@ -558,7 +596,7 @@ const Entity kEntities[] = {
     // after each check.
     {.kind = Kind::kUpdate,
      .object_id = "firmware",
-     .name = "Firmware",
+     .name = Str::kHaEntFirmware,
      .device_class = "firmware",
      .category = Category::kConfig,
      .get_update = g_update,
@@ -569,7 +607,7 @@ const Entity kEntities[] = {
     // message before esp_restart(), that nothing replaced at the next boot.
     {.kind = Kind::kTextSensor,
      .object_id = "ota_status",
-     .name = "Statut OTA",
+     .name = Str::kHaEntOtaStatus,
      .category = Category::kDiagnostic,
      .get_text = g_ota_status,
      .refresh_when_busy = true},
@@ -577,7 +615,7 @@ const Entity kEntities[] = {
     // --- Binary ------------------------------------------------------------
     {.kind = Kind::kBinarySensor,
      .object_id = "in_call",
-     .name = "Appel en cours",
+     .name = Str::kHaEntInCall,
      .device_class = "occupancy",
      .get_bool = g_call,
      .refresh_when_busy = true},
@@ -585,7 +623,7 @@ const Entity kEntities[] = {
     // wakes the screen cannot wait 30 s.
     {.kind = Kind::kBinarySensor,
      .object_id = "presence",
-     .name = "Presence devant l'ecran",
+     .name = Str::kHaEntPresence,
      .device_class = "motion",
      .get_bool = g_presence,
      .refresh_when_busy = true},

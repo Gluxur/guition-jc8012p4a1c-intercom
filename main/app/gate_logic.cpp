@@ -1,6 +1,10 @@
 #include "gate_logic.h"
 
+#include "sys/i18n.h"
+
 #include <cstring>
+
+using i18n::Str;
 
 namespace gate_logic {
 
@@ -72,27 +76,32 @@ const char *event_name_for(Action a) {
 
 Look look(State s, bool configured, bool ha_connected, bool failed) {
   if (!configured) {
-    return {"Portail", "", "à configurer dans HA", Tone::kOff, false};
+    return {i18n::t(Str::kHomeGate), "", i18n::t(Str::kGateSetUpInHa),
+            Tone::kOff, false};
   }
-  constexpr Look kUnavailableLook = {"Portail indisponible", "Indisponible", "",
-                                     Tone::kOff, false};
+  const Look unavailable = {i18n::t(Str::kGateUnavailable),
+                            i18n::t(Str::kGateUnavailableShort), "", Tone::kOff,
+                            false};
   if (!ha_connected) {
-    return kUnavailableLook;
+    return unavailable;
   }
   if (failed) {
-    return {"Échec portail", "Échec", "", Tone::kOff, true};
+    return {i18n::t(Str::kGateFailed), i18n::t(Str::kGateFailedShort), "",
+            Tone::kOff, true};
   }
   switch (next_action(s)) {
   case Action::kOpen:
-    return {"Ouvrir le portail", "Ouvrir", "", Tone::kOpen, true};
+    return {i18n::t(Str::kGateOpen), i18n::t(Str::kGateOpenShort), "",
+            Tone::kOpen, true};
   case Action::kClose:
-    return {"Fermer le portail", "Fermer", "", Tone::kClose, true};
+    return {i18n::t(Str::kGateClose), i18n::t(Str::kClose), "",
+            Tone::kClose, true};
   case Action::kStop:
-    return {"Arrêter", "Arrêter", "", Tone::kStop, true};
+    return {i18n::t(Str::kGateStop), i18n::t(Str::kGateStop), "", Tone::kStop, true};
   case Action::kNone:
     break;
   }
-  return kUnavailableLook;
+  return unavailable;
 }
 
 bool accept_state(const char *watched_id, const char *entity_id,

@@ -1,4 +1,5 @@
 #include "net/weather.h"
+#include "sys/i18n.h"
 
 #include <gtest/gtest.h>
 
@@ -79,6 +80,18 @@ TEST(WeatherParse, DerivesTheWeekdayFromTheDatetimeField) {
   EXPECT_STREQ("Sam", f.days[0].day);
   EXPECT_STREQ("Dim", f.days[1].day);
   EXPECT_STREQ("Lun", f.days[2].day);
+}
+
+TEST(WeatherParse, WeekdayFollowsTheUiLanguage) {
+  // Même date que ci-dessus (samedi 11 juillet 2026), interface en anglais.
+  i18n::init(i18n::Lang::kEn);
+  const weather::Forecast f =
+      parse(wrap("[{\"datetime\":\"2026-07-11T12:00:00+00:00\"},"
+                 "{\"datetime\":\"2026-07-12T12:00:00+00:00\"}]"));
+  i18n::init(i18n::Lang::kFr);
+  ASSERT_EQ(2, f.count);
+  EXPECT_STREQ("Sat", f.days[0].day);
+  EXPECT_STREQ("Sun", f.days[1].day);
 }
 
 TEST(WeatherParse, HandlesLeapDayBoundaries) {

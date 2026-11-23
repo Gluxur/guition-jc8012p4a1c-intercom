@@ -7,7 +7,10 @@
 #include "lvgl.h"
 #include "ui_sdlog.h"
 #include "ui_stats.h"
+#include "sys/i18n.h"
 #include "theme.h"
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_36);
 
@@ -48,8 +51,9 @@ void sync_tone_btn() {
     return;
   }
   bool on = s_cbs.mic_tone_active();
-  lv_label_set_text(s_tone_lbl, on ? LV_SYMBOL_STOP " Stop melodie"
-                                   : LV_SYMBOL_AUDIO " Melodie");
+  lv_label_set_text_fmt(s_tone_lbl, "%s %s", on ? LV_SYMBOL_STOP : LV_SYMBOL_AUDIO,
+                        on ? i18n::t(Str::kMicStopTune)
+                           : i18n::t(Str::kMicTune));
   lv_obj_set_style_bg_color(s_tone_btn,
                             lv_color_hex(on ? ui::theme::active.btn_on : ui::theme::active.btn_neutral), 0);
 }
@@ -62,8 +66,9 @@ void sync_ring_btn() {
     return;
   }
   const bool on = s_cbs.ringtone_active();
-  lv_label_set_text(s_ring_lbl, on ? LV_SYMBOL_STOP " Stop sonnerie"
-                                   : LV_SYMBOL_BELL " Sonnerie");
+  lv_label_set_text_fmt(s_ring_lbl, "%s %s", on ? LV_SYMBOL_STOP : LV_SYMBOL_BELL,
+                        on ? i18n::t(Str::kMicStopRing)
+                           : i18n::t(Str::kMicRing));
   lv_obj_set_style_bg_color(s_ring_btn,
                             lv_color_hex(on ? ui::theme::active.btn_danger : ui::theme::active.btn_go), 0);
 }
@@ -115,24 +120,25 @@ void refresh_timer(lv_timer_t *t) {
     const char *txt = "Idle";
     switch (v & 0x03) {
     case 1:
-      txt = "Connexion...";
+      txt = i18n::t(Str::kMicConnecting);
       break;
     case 2:
-      txt = "Connecte";
+      txt = i18n::t(Str::kMicConnected);
       break;
     case 3:
-      txt = "Echec";
+      txt = i18n::t(Str::kMicFailed);
       break;
     default:
       txt = "Idle";
       break;
     }
     lv_label_set_text_fmt(s_state_lbl, "Backchannel : %s", txt);
-    lv_label_set_text_fmt(s_sdp_lbl, "Reponse SDP camera : %s",
-                          (v & 0x04) ? "oui" : "non");
+    lv_label_set_text(s_sdp_lbl, (v & 0x04)
+                                     ? i18n::t(Str::kMicSdpYes)
+                                     : i18n::t(Str::kMicSdpNo));
   }
 
-  lv_label_set_text_fmt(s_gain_lbl, "Gain micro : %u%%",
+  lv_label_set_text_fmt(s_gain_lbl, i18n::t(Str::kMicGainFmt),
                         (unsigned)bsp::Bsp::instance().mic_gain());
 
   if (s_cbs.mic_level) {
@@ -198,8 +204,8 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_align(s_tabs, LV_ALIGN_TOP_MID, 0, 72);
   lv_obj_set_style_bg_color(s_tabs, lv_color_hex(ui::theme::active.dark_bg), 0);
 
-  lv_obj_t *tab_mic = lv_tabview_add_tab(s_tabs, "Micro");
-  lv_obj_t *tab_sd = lv_tabview_add_tab(s_tabs, "Carte SD");
+  lv_obj_t *tab_mic = lv_tabview_add_tab(s_tabs, i18n::t(Str::kMicTab));
+  lv_obj_t *tab_sd = lv_tabview_add_tab(s_tabs, i18n::t(Str::kMicSdTab));
 
   // --- Bandeau statut ---
   s_state_lbl = lv_label_create(tab_mic);
@@ -209,12 +215,12 @@ void create_screen(const ui::Callbacks &cbs) {
 
   s_sdp_lbl = lv_label_create(tab_mic);
   lv_obj_set_style_text_color(s_sdp_lbl, lv_color_white(), 0);
-  lv_label_set_text(s_sdp_lbl, "Reponse SDP camera : non");
+  lv_label_set_text(s_sdp_lbl, i18n::t(Str::kMicSdpNo));
   lv_obj_align(s_sdp_lbl, LV_ALIGN_TOP_LEFT, 8, 40);
 
   s_gain_lbl = lv_label_create(tab_mic);
   lv_obj_set_style_text_color(s_gain_lbl, lv_color_white(), 0);
-  lv_label_set_text(s_gain_lbl, "Gain micro : 0%");
+  lv_label_set_text(s_gain_lbl, i18n::t(Str::kMicGainZero));
   lv_obj_align(s_gain_lbl, LV_ALIGN_TOP_LEFT, 8, 76);
 
   // --- Slider de gain (vertical, colonne gauche) ---
@@ -238,7 +244,7 @@ void create_screen(const ui::Callbacks &cbs) {
 
   lv_obj_t *vu_cap = lv_label_create(tab_mic);
   lv_obj_set_style_text_color(vu_cap, lv_color_white(), 0);
-  lv_label_set_text(vu_cap, "Niveau");
+  lv_label_set_text(vu_cap, i18n::t(Str::kMicLevel));
   lv_obj_align_to(vu_cap, s_vu_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
 
   // --- Panneau log (textarea scrollable, lecture seule) ---
@@ -256,7 +262,7 @@ void create_screen(const ui::Callbacks &cbs) {
   lv_obj_set_style_bg_color(back_btn, lv_color_hex(ui::theme::active.btn_back), 0);
   lv_obj_set_style_shadow_width(back_btn, 0, 0); // cf. contrainte CPU, ui.cpp
   lv_obj_t *back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Retour");
+  lv_label_set_text_fmt(back_lbl, "%s %s", LV_SYMBOL_LEFT, i18n::t(Str::kBack));
   lv_obj_set_style_text_font(back_lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(back_lbl, lv_color_white(), 0);
   lv_obj_center(back_lbl);

@@ -24,7 +24,10 @@
 #include "sys/usb_msc.h"
 #include "ui_mic.h"
 #include "ui_usb.h"
+#include "sys/i18n.h"
 #include "theme.h"
+
+using i18n::Str;
 
 namespace ui_sdlog {
 
@@ -111,7 +114,8 @@ void do_list() {
   s_name_count = 0;
   DIR *dir = opendir(cfg::sd::kLogDir);
   if (!dir) {
-    snprintf(s_result_msg, sizeof(s_result_msg), "dossier %s illisible",
+    snprintf(s_result_msg, sizeof(s_result_msg),
+             i18n::t(Str::kSdFolderUnreadableFmt),
              cfg::sd::kLogDir);
     return;
   }
@@ -165,7 +169,8 @@ void do_page() {
   snprintf(path, sizeof(path), "%s/%s", cfg::sd::kLogDir, s_open_name);
   FILE *f = fopen(path, "r");
   if (!f) {
-    snprintf(s_result_msg, sizeof(s_result_msg), "ouverture impossible");
+    snprintf(s_result_msg, sizeof(s_result_msg), "%s",
+             i18n::t(Str::kSdCannotOpen));
     return;
   }
   fseek(f, 0, SEEK_END);
@@ -202,17 +207,18 @@ void do_format() {
   // démontait la partition avec un descripteur vivant dessus.
   if (!sd_log::pause_and_wait()) {
     sd_log::resume();
-    snprintf(s_result_msg, sizeof(s_result_msg),
-             "journal SD occupe : formatage annule");
+    snprintf(s_result_msg, sizeof(s_result_msg), "%s",
+             i18n::t(Str::kSdFormatBusy));
     return;
   }
   const esp_err_t err = bsp::Bsp::instance().sd_format();
   if (err == ESP_OK) {
     mkdir(cfg::sd::kLogDir, 0777);
-    snprintf(s_result_msg, sizeof(s_result_msg), "formatage OK");
+    snprintf(s_result_msg, sizeof(s_result_msg), "%s",
+             i18n::t(Str::kSdFormatOk));
   } else {
-    snprintf(s_result_msg, sizeof(s_result_msg), "formatage : %s",
-             esp_err_to_name(err));
+    snprintf(s_result_msg, sizeof(s_result_msg),
+             i18n::t(Str::kSdFormatErrorFmt), esp_err_to_name(err));
   }
   sd_log::resume();
   s_open_name[0] = '\0';
@@ -226,14 +232,14 @@ void do_usb_enter() {
     ui_usb::show();
     return;
   }
-  snprintf(s_result_msg, sizeof(s_result_msg), "mode USB : %s",
-           usb_msc::last_error());
+  snprintf(s_result_msg, sizeof(s_result_msg),
+           i18n::t(Str::kSdUsbEnterErrorFmt), usb_msc::last_error());
 }
 
 void do_usb_leave() {
   if (!usb_msc::leave()) {
-    snprintf(s_result_msg, sizeof(s_result_msg), "sortie USB : %s",
-             usb_msc::last_error());
+    snprintf(s_result_msg, sizeof(s_result_msg),
+             i18n::t(Str::kSdUsbLeaveErrorFmt), usb_msc::last_error());
   }
   // Retour à la page Micro/Debug, que le remontage ait abouti ou non : rester
   // sur l'écran USB alors que le mode est terminé serait un mensonge. L'état
@@ -251,7 +257,8 @@ void do_fw_list() {
   s_fw_count = 0;
   DIR *dir = opendir(cfg::sd::kMountPoint);
   if (!dir) {
-    snprintf(s_result_msg, sizeof(s_result_msg), "racine %s illisible",
+    snprintf(s_result_msg, sizeof(s_result_msg),
+             i18n::t(Str::kSdRootUnreadableFmt),
              cfg::sd::kMountPoint);
     return;
   }
@@ -272,8 +279,8 @@ void do_fw_list() {
   }
   closedir(dir);
   if (s_fw_count == 0) {
-    snprintf(s_result_msg, sizeof(s_result_msg),
-             "aucun .bin a la racine de la carte");
+    snprintf(s_result_msg, sizeof(s_result_msg), "%s",
+             i18n::t(Str::kSdNoFirmware));
   }
 }
 
@@ -325,14 +332,15 @@ void refresh_status() {
   // retrouvé sa carte — c'est ce que l'utilisateur doit lire en premier.
   if (usb_msc::status() == usb_msc::Status::kError) {
     lv_label_set_text(s_status_lbl,
-                      "Carte non remontee apres le mode USB - formater");
+                      i18n::t(Str::kSdNotRemounted));
     return;
   }
   const bsp::SdState state = bsp::Bsp::instance().sd_state();
   if (state != bsp::SdState::kMounted) {
     lv_label_set_text_fmt(
-        s_status_lbl, "Carte : %s (%s)",
-        state == bsp::SdState::kAbsent ? "absente" : "erreur",
+        s_status_lbl,
+        state == bsp::SdState::kAbsent ? i18n::t(Str::kSdCardMissingFmt)
+                                       : i18n::t(Str::kSdCardErrorFmt),
         esp_err_to_name(bsp::Bsp::instance().sd_last_error()));
     return;
   }
@@ -350,14 +358,15 @@ void refresh_status() {
   const uint32_t dropped = sd_log::dropped_lines();
   if (dropped > 0) {
     lv_label_set_text_fmt(
-        s_status_lbl, "Carte montee - %llu Mo, %llu Mo libres - %s - %lu "
-                      "lignes perdues",
+        s_status_lbl,
+        i18n::t(Str::kSdMountedLostFmt),
         static_cast<unsigned long long>(total / (1024ULL * 1024)),
         static_cast<unsigned long long>(freeb / (1024ULL * 1024)),
         sd_log::current_file(), static_cast<unsigned long>(dropped));
   } else {
     lv_label_set_text_fmt(
-        s_status_lbl, "Carte montee - %llu Mo, %llu Mo libres - %s",
+        s_status_lbl,
+        i18n::t(Str::kSdMountedFmt),
         static_cast<unsigned long long>(total / (1024ULL * 1024)),
         static_cast<unsigned long long>(freeb / (1024ULL * 1024)),
         sd_log::current_file());
@@ -381,7 +390,7 @@ void cb_file_clicked(lv_event_t *e) {
   // cet offset volontairement excessif sur la dernière page complète, une fois
   // la taille connue — elle ne l'est pas ici, pas de stat côté LVGL.
   s_page_offset = LONG_MAX;
-  lv_textarea_set_text(s_view, "Lecture...");
+  lv_textarea_set_text(s_view, i18n::t(Str::kSdReading));
   request(Job::kPage);
 }
 
@@ -411,7 +420,7 @@ void cb_refresh(lv_event_t *e) {
 void cb_format_confirmed(lv_event_t *e) {
   lv_obj_t *mbox = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
   lv_msgbox_close(mbox);
-  lv_textarea_set_text(s_view, "Formatage en cours...");
+  lv_textarea_set_text(s_view, i18n::t(Str::kSdFormatting));
   request(Job::kFormat);
 }
 
@@ -434,24 +443,24 @@ void cb_usb(lv_event_t *e) {
   // Confirmation non parce que c'est destructif, mais parce que ça coupe la
   // sonnette : un visiteur qui sonne pendant le transfert n'est pas vu.
   lv_obj_t *mbox = lv_msgbox_create(NULL);
-  lv_msgbox_add_title(mbox, "Mode cle USB");
-  lv_msgbox_add_text(mbox, "Exposer la carte SD au PC ?\n"
-                           "La sonnette sera ignoree pendant ce mode.");
-  lv_obj_t *cancel = lv_msgbox_add_footer_button(mbox, "Annuler");
+  lv_msgbox_add_title(mbox, i18n::t(Str::kSdUsbModeTitle));
+  lv_msgbox_add_text(mbox, i18n::t(Str::kSdUsbConfirm));
+  lv_obj_t *cancel =
+      lv_msgbox_add_footer_button(mbox, i18n::t(Str::kCancel));
   lv_obj_add_event_cb(cancel, cb_usb_cancel, LV_EVENT_CLICKED, mbox);
-  lv_obj_t *ok = lv_msgbox_add_footer_button(mbox, "Exposer");
+  lv_obj_t *ok = lv_msgbox_add_footer_button(mbox, i18n::t(Str::kSdUsbExpose));
   lv_obj_add_event_cb(ok, cb_usb_confirmed, LV_EVENT_CLICKED, mbox);
 }
 
 void cb_format(lv_event_t *e) {
   (void)e;
   lv_obj_t *mbox = lv_msgbox_create(NULL);
-  lv_msgbox_add_title(mbox, "Formater la carte");
-  lv_msgbox_add_text(mbox, "Effacer TOUT le contenu de la carte ?\n"
-                           "Cette action est irreversible.");
-  lv_obj_t *cancel = lv_msgbox_add_footer_button(mbox, "Annuler");
+  lv_msgbox_add_title(mbox, i18n::t(Str::kSdFormatTitle));
+  lv_msgbox_add_text(mbox, i18n::t(Str::kSdFormatConfirm));
+  lv_obj_t *cancel =
+      lv_msgbox_add_footer_button(mbox, i18n::t(Str::kCancel));
   lv_obj_add_event_cb(cancel, cb_format_cancel, LV_EVENT_CLICKED, mbox);
-  lv_obj_t *ok = lv_msgbox_add_footer_button(mbox, "Effacer");
+  lv_obj_t *ok = lv_msgbox_add_footer_button(mbox, i18n::t(Str::kSdErase));
   lv_obj_set_style_bg_color(ok, lv_color_hex(ui::theme::active.btn_danger), 0);
   lv_obj_add_event_cb(ok, cb_format_confirmed, LV_EVENT_CLICKED, mbox);
 }
@@ -477,7 +486,7 @@ void cb_fw_chosen(lv_event_t *e) {
     lv_msgbox_close(s_fw_mbox);
     s_fw_mbox = nullptr;
   }
-  lv_textarea_set_text(s_view, "Mise a jour lancee. Suivre le statut OTA.");
+  lv_textarea_set_text(s_view, i18n::t(Str::kSdFwStarted));
   request(Job::kFwFlash);
 }
 
@@ -488,20 +497,23 @@ void show_fw_dialog() {
     return; // do_fw_list a déjà rempli s_result_msg
   }
   s_fw_mbox = lv_msgbox_create(NULL);
-  lv_msgbox_add_title(s_fw_mbox, "Mettre a jour le firmware");
+  lv_msgbox_add_title(s_fw_mbox,
+                      i18n::t(Str::kSdFwTitle));
   const esp_app_desc_t *cur = esp_app_get_description();
-  lv_msgbox_add_text_fmt(s_fw_mbox, "Version actuelle : %s",
+  lv_msgbox_add_text_fmt(s_fw_mbox,
+                         i18n::t(Str::kSdFwCurrentFmt),
                          cur ? cur->version : "?");
 
   for (int i = 0; i < s_fw_count; i++) {
     FwEntry &fw = s_fw[i];
     char line[160];
     if (fw.valid) {
-      snprintf(line, sizeof(line), "%.31s\n%.31s %.31s - %u Ko", fw.name,
+      snprintf(line, sizeof(line), "%.31s\n%.31s %.31s - %u %s", fw.name,
                fw.info.project, fw.info.version,
-               (unsigned)(fw.info.size_bytes / 1024));
+               (unsigned)(fw.info.size_bytes / 1024), i18n::t(Str::kUnitKb));
     } else {
-      snprintf(line, sizeof(line), "%.31s\n(pas un firmware)", fw.name);
+      snprintf(line, sizeof(line), "%.31s\n%s", fw.name,
+               i18n::t(Str::kSdFwInvalid));
     }
     lv_obj_t *btn = lv_msgbox_add_footer_button(s_fw_mbox, line);
     if (!fw.valid) {
@@ -510,7 +522,8 @@ void show_fw_dialog() {
     }
     lv_obj_add_event_cb(btn, cb_fw_chosen, LV_EVENT_CLICKED, &fw);
   }
-  lv_obj_t *cancel = lv_msgbox_add_footer_button(s_fw_mbox, "Annuler");
+  lv_obj_t *cancel =
+      lv_msgbox_add_footer_button(s_fw_mbox, i18n::t(Str::kCancel));
   lv_obj_add_event_cb(cancel, cb_fw_cancel, LV_EVENT_CLICKED, nullptr);
 }
 
@@ -518,7 +531,7 @@ void cb_firmware(lv_event_t *e) {
   (void)e;
   // La carte appartient au PC en mode clé USB : aucune lecture possible.
   if (usb_msc::status() == usb_msc::Status::kActive) {
-    lv_textarea_set_text(s_view, "Mode cle USB actif : carte indisponible.");
+    lv_textarea_set_text(s_view, i18n::t(Str::kSdUsbActive));
     return;
   }
   request(Job::kFwList);
@@ -555,8 +568,8 @@ void poll_timer(lv_timer_t *t) {
     lv_obj_clean(s_list);
     for (int i = 0; i < s_name_count; i++) {
       char label[64];
-      snprintf(label, sizeof(label), "%.31s  (%ld Ko)", s_names[i],
-               s_sizes[i] / 1024);
+      snprintf(label, sizeof(label), "%.31s  (%ld %s)", s_names[i],
+               s_sizes[i] / 1024, i18n::t(Str::kUnitKb));
       lv_obj_t *btn = lv_list_add_button(s_list, LV_SYMBOL_FILE, label);
       lv_obj_add_event_cb(btn, cb_file_clicked, LV_EVENT_CLICKED, NULL);
     }
@@ -590,7 +603,7 @@ void create_tab(lv_obj_t *parent) {
       static_cast<size_t>(cfg::sd::kViewPageBytes) + 1, MALLOC_CAP_SPIRAM));
   if (!s_page_buf) {
     lv_obj_t *err = lv_label_create(parent);
-    lv_label_set_text(err, "PSRAM insuffisante pour la visionneuse");
+    lv_label_set_text(err, i18n::t(Str::kSdNoPsram));
     lv_obj_set_style_text_color(err, lv_color_white(), 0);
     lv_obj_center(err);
     return;
@@ -599,7 +612,7 @@ void create_tab(lv_obj_t *parent) {
 
   s_status_lbl = lv_label_create(parent);
   lv_obj_set_style_text_color(s_status_lbl, lv_color_white(), 0);
-  lv_label_set_text(s_status_lbl, "Carte : ...");
+  lv_label_set_text(s_status_lbl, i18n::t(Str::kSdCardPending));
   lv_obj_align(s_status_lbl, LV_ALIGN_TOP_LEFT, 8, 4);
 
   s_list = lv_list_create(parent);
@@ -618,20 +631,30 @@ void create_tab(lv_obj_t *parent) {
   // était donc annulé en permanence — impossible de tenir la vue en bas.
   lv_textarea_set_cursor_click_pos(s_view, false);
 
+  // Icône et texte séparés : les tables de langue ne contiennent pas les
+  // glyphes LVGL. `icon_after` : « Suiv > » se lit flèche à droite.
   struct ButtonSpec {
+    const char *icon;
     const char *label;
+    bool icon_after;
     lv_event_cb_t cb;
     int x;
     lv_obj_t **out;
     uint32_t color;
   };
   static const ButtonSpec kButtons[] = {
-      {LV_SYMBOL_LEFT " Prec", cb_prev, 320, &s_prev_btn, ui::theme::active.btn_neutral},
-      {"Suiv " LV_SYMBOL_RIGHT, cb_next, 470, &s_next_btn, ui::theme::active.btn_neutral},
-      {LV_SYMBOL_REFRESH " Actualiser", cb_refresh, 620, nullptr, ui::theme::active.btn_neutral},
-      {LV_SYMBOL_TRASH " Formater", cb_format, 790, nullptr, ui::theme::active.btn_danger},
-      {LV_SYMBOL_USB " Cle USB", cb_usb, 940, nullptr, ui::theme::active.btn_usb},
-      {LV_SYMBOL_DOWNLOAD " Firmware", cb_firmware, 1090, nullptr, ui::theme::active.btn_fw},
+      {LV_SYMBOL_LEFT, i18n::t(Str::kSdPrev), false, cb_prev, 320, &s_prev_btn,
+       ui::theme::active.btn_neutral},
+      {LV_SYMBOL_RIGHT, i18n::t(Str::kSdNext), true, cb_next, 470, &s_next_btn,
+       ui::theme::active.btn_neutral},
+      {LV_SYMBOL_REFRESH, i18n::t(Str::kSdRefresh), false, cb_refresh, 620, nullptr,
+       ui::theme::active.btn_neutral},
+      {LV_SYMBOL_TRASH, i18n::t(Str::kSdFormat), false, cb_format, 790, nullptr,
+       ui::theme::active.btn_danger},
+      {LV_SYMBOL_USB, i18n::t(Str::kSdUsbDrive), false, cb_usb, 940, nullptr,
+       ui::theme::active.btn_usb},
+      {LV_SYMBOL_DOWNLOAD, "Firmware", false, cb_firmware, 1090, nullptr,
+       ui::theme::active.btn_fw},
   };
   for (const ButtonSpec &b : kButtons) {
     lv_obj_t *btn = lv_button_create(parent);
@@ -640,7 +663,8 @@ void create_tab(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(btn, lv_color_hex(b.color), 0);
     lv_obj_set_style_shadow_width(btn, 0, 0); // cf. contrainte CPU, ui.cpp
     lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, b.label);
+    lv_label_set_text_fmt(lbl, "%s %s", b.icon_after ? b.label : b.icon,
+                          b.icon_after ? b.icon : b.label);
     lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
     lv_obj_center(lbl);
     lv_obj_add_event_cb(btn, b.cb, LV_EVENT_CLICKED, NULL);

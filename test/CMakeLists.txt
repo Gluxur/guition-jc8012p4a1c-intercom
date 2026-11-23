@@ -89,6 +89,7 @@ add_executable(tests
   test_gate_logic.cpp
   test_ha_entity_id.cpp
   test_github_release.cpp
+  test_i18n.cpp
   # Sources applicatives réelles, compilées pour le host. En ajouter une ici
   # n'est légitime que si elle ne tire aucun header de driver ESP-IDF (stubs/
   # ne couvre que le log et le compteur µs, cf. les commentaires en tête).
@@ -110,6 +111,7 @@ add_executable(tests
   "${APP_DIR}/net/gcal_parse.cpp"
   "${APP_DIR}/net/github_release.cpp"
   "${APP_DIR}/net/weather_parse.cpp"
+  "${APP_DIR}/sys/i18n.cpp"
   "${APP_DIR}/sys/ota_image_check.cpp"
   "${BSP_DIR}/ppa_srm_quirk.cpp"
 )

@@ -16,6 +16,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "sys/i18n.h"
+
 namespace esphome_api {
 
 enum class Kind : uint8_t {
@@ -53,7 +55,10 @@ struct UpdateState {
 struct Entity {
   Kind kind;
   const char *object_id; // stable: HA derives the entity's unique_id from it
-  const char *name;
+  // Display name, from the language files (sys/lang/*.h): HA shows it in the
+  // UI language fixed at boot. Renaming only changes the friendly name; the
+  // entity_id HA built at first sight stays.
+  i18n::Str name;
   const char *icon = nullptr; // "mdi:..."
   const char *device_class = nullptr;
   const char *unit = nullptr;
@@ -63,7 +68,11 @@ struct Entity {
   // kSensor
   int8_t accuracy = 0;
   // kSelect
+  // Either `options` (values identical in every language: ids such as page
+  // names) or `option_names` (translated labels). get_text/set_text must
+  // speak the same list as the one announced.
   const char *const *options = nullptr;
+  const i18n::Str *option_names = nullptr;
   uint8_t option_count = 0;
   // State. kBinarySensor/kSwitch: get_bool; kSensor/kNumber: get_float (NAN
   // = unknown); kTextSensor/kSelect: get_text; kLight: get_bool (on) and

@@ -12,6 +12,7 @@
 #include "net/mjpeg_client.h"
 #include "net/wifi_net.h"
 #include "sys/mutex.h"
+#include "sys/i18n.h"
 #include "sys/prefs.h"
 #include "sys/sys_stats.h"
 #include "ui/ui.h"
@@ -20,6 +21,8 @@
 #include <cstdio>
 #include <cstdlib> // free() : la sortie du décodeur vient de jpeg_alloc_decoder_mem
 #include <cstring> // memcpy : archivage d'une frame de la mailbox
+
+using i18n::Str;
 
 namespace video_mjpeg {
 namespace {
@@ -129,7 +132,7 @@ void banner_lost() {
   }
   s_lost = true;
   ESP_LOGW(TAG, "flux perdu : aucune frame depuis %d s", (int)(kStreamLostUs / 1000000));
-  ui::show_error("Flux vidéo perdu\nReconnexion en cours...");
+  ui::show_error(i18n::t(Str::kCamStreamLost));
 }
 
 // Appelée à chaque frame consommée, AVANT decode_render : celui-ci refuse

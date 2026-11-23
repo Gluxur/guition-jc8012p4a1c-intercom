@@ -15,6 +15,7 @@
 #include "app/video_mjpeg.h"
 #include "media/ringtone.h"
 #include "net/signaling.h"
+#include "sys/i18n.h"
 #include "sys/sys_stats.h"
 #include "ui/ui.h"
 #include "ui/ui_camera_v2.h"
@@ -24,6 +25,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+using i18n::Str;
 
 namespace camera_session {
 namespace {
@@ -171,7 +174,9 @@ void signaling_retry_task(void *arg) {
       break;
     }
     char msg[96];
-    snprintf(msg, sizeof(msg), "go2rtc signaling failed\nretry #%d...", attempt);
+    snprintf(msg, sizeof(msg),
+             i18n::t(Str::kCamSignalingRetryN),
+             attempt);
     ui::show_error(msg);
   }
   // hide_error UNIQUEMENT si la session nous appartient encore : sinon on
@@ -211,7 +216,7 @@ int on_peer_msg(esp_peer_msg_t *msg, void *ctx) {
   // Bloquer ici ne retarde rien d'autre, la négociation n'a pas commencé.
   if (xSemaphoreTake(s_signaling_busy, pdMS_TO_TICKS(6000)) != pdTRUE) {
     ESP_LOGE(TAG, "canal de signalisation toujours occupé : offre abandonnée");
-    ui::show_error("go2rtc signaling busy");
+    ui::show_error(i18n::t(Str::kCamSignalingBusy));
     free(sdp);
     return 0;
   }
@@ -228,7 +233,7 @@ int on_peer_msg(esp_peer_msg_t *msg, void *ctx) {
     return 0;
   }
 
-  ui::show_error("go2rtc signaling failed\nretrying...");
+  ui::show_error(i18n::t(Str::kCamSignalingRetrying));
   auto *ra = static_cast<RetryArg *>(malloc(sizeof(RetryArg)));
   if (ra == nullptr) {
     free(sdp);
@@ -396,7 +401,7 @@ static void start_common_locked() {
   if (s_stopping.load(std::memory_order_acquire)) {
     ESP_LOGE(TAG, "start abandonné : démontage précédent toujours en cours");
     s_ringback_wanted.store(false);
-    ui::show_error("Session précédente bloquée\nRéessayez");
+    ui::show_error(i18n::t(Str::kCamPreviousSessionStuck));
     return;
   }
   // Nouvelle génération AVANT toute création de tâche : un sig_retry de la
@@ -449,7 +454,7 @@ static void start_common_locked() {
     ESP_LOGE(TAG, "start: esp_peer_open -> %d (interne libre=%u)",
              (int)open_err,
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ui::show_error("Erreur ouverture WebRTC");
+    ui::show_error(i18n::t(Str::kCamWebrtcOpenError));
     restore_display(); // teardown() ne sera pas appelé sur ce chemin
     s_ringback_wanted.store(false); // stop() non plus : la demande mourrait armée
     return;
@@ -479,7 +484,7 @@ static void start_common_locked() {
                                       5, nullptr, 1,
                                       MALLOC_CAP_SPIRAM) != pdPASS) {
     ESP_LOGE(TAG, "Échec de la création de peer_loop_task en PSRAM !");
-    ui::show_error("Erreur allocation mémoire tâche");
+    ui::show_error(i18n::t(Str::kCamTaskAllocError));
     s_active.store(false, std::memory_order_relaxed);
     esp_peer_close(s_peer);
     s_peer = nullptr;
@@ -502,7 +507,7 @@ static void start_common_locked() {
     // Sans tâche de rendu, la bannière « flux perdu » ne s'affiche jamais :
     // l'écran restait noir sans explication.
     ESP_LOGE(TAG, "start: démarrage vidéo MJPEG échoué");
-    ui::show_error("Erreur démarrage vidéo");
+    ui::show_error(i18n::t(Str::kCamVideoStartError));
   }
 }
 

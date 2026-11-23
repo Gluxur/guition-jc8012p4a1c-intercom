@@ -3,7 +3,10 @@
 #include "bsp.h"
 #include "lvgl.h"
 #include "sys/usb_msc.h"
+#include "sys/i18n.h"
 #include "theme.h"
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_36);
 LV_FONT_DECLARE(montserrat_fr_24);
@@ -32,8 +35,8 @@ void tick(lv_timer_t *t) {
   }
   const bool up = usb_msc::host_connected();
   lv_label_set_text(s_host_lbl,
-                    up ? "Hote USB : connecte"
-                       : "Hote USB : aucun hote detecte");
+                    up ? i18n::t(Str::kUsbHostConnected)
+                       : i18n::t(Str::kUsbHostNone));
   lv_obj_set_style_text_color(s_host_lbl,
                               lv_color_hex(up ? ui::theme::active.usb_up : ui::theme::active.warn), 0);
 }
@@ -46,7 +49,7 @@ void create_screen() {
   lv_obj_set_style_bg_color(s_scr, lv_color_hex(ui::theme::active.dark_bg), 0);
 
   lv_obj_t *title = lv_label_create(s_scr);
-  lv_label_set_text(title, "Mode cle USB");
+  lv_label_set_text(title, i18n::t(Str::kSdUsbModeTitle));
   lv_obj_set_style_text_font(title, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(title, lv_color_white(), 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 80);
@@ -55,19 +58,19 @@ void create_screen() {
   // Le connecteur n'est pas serigraphie : ce libelle designe le port deduit,
   // a corriger si le premier essai montre que l'enumeration se produit
   // ailleurs.
-  lv_label_set_text(info, "Carte SD accessible sur le port USB du milieu.");
+  lv_label_set_text(info, i18n::t(Str::kUsbInfo));
   lv_obj_set_style_text_font(info, &montserrat_fr_24, 0);
   lv_obj_set_style_text_color(info, lv_color_hex(ui::theme::active.dark_label), 0);
   lv_obj_align(info, LV_ALIGN_CENTER, 0, -60);
 
   s_host_lbl = lv_label_create(s_scr);
-  lv_label_set_text(s_host_lbl, "Hote USB : aucun hote detecte");
+  lv_label_set_text(s_host_lbl, i18n::t(Str::kUsbHostNone));
   lv_obj_set_style_text_font(s_host_lbl, &montserrat_fr_24, 0);
   lv_obj_set_style_text_color(s_host_lbl, lv_color_hex(ui::theme::active.warn), 0);
   lv_obj_align(s_host_lbl, LV_ALIGN_CENTER, 0, 0);
 
   lv_obj_t *warn = lv_label_create(s_scr);
-  lv_label_set_text(warn, "Sonnette ignoree pendant ce mode.");
+  lv_label_set_text(warn, i18n::t(Str::kUsbDoorbellIgnored));
   lv_obj_set_style_text_font(warn, &montserrat_fr_24, 0);
   lv_obj_set_style_text_color(warn, lv_color_hex(ui::theme::active.dark_sub), 0);
   lv_obj_align(warn, LV_ALIGN_CENTER, 0, 50);
@@ -79,7 +82,7 @@ void create_screen() {
   lv_obj_set_style_shadow_width(btn, 0, 0); // cf. contrainte CPU, ui.cpp
   lv_obj_add_event_cb(btn, cb_leave, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *lbl = lv_label_create(btn);
-  lv_label_set_text(lbl, "Terminer");
+  lv_label_set_text(lbl, i18n::t(Str::kUsbFinish));
   lv_obj_set_style_text_font(lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
   lv_obj_center(lbl);

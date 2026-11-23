@@ -26,6 +26,7 @@ constexpr char kRingFileKey[] = "ring_file";
 constexpr char kFileSrvKey[] = "filesrv";
 constexpr char kEchoKey[] = "echo";
 constexpr char kThemeKey[] = "theme";
+constexpr char kLangKey[] = "lang";
 // Indexées par HaEntity. <= 15 caractères (limite NVS).
 constexpr const char *kEntityKeys[] = {"ent_gate", "ent_weather", "ent_cal"};
 constexpr size_t kEntityCount = sizeof(kEntityKeys) / sizeof(kEntityKeys[0]);
@@ -57,6 +58,9 @@ std::atomic<EchoCancel> s_echo{EchoCancel::kLowCost};
 // Écrit par la tâche LVGL, lu par ui::create_screens() au boot : atomique, par
 // cohérence avec les autres préférences.
 std::atomic<UiTheme> s_theme{UiTheme::kVice};
+
+// Écrit par la tâche LVGL et la tâche de l'API, lu au boot par app_main.
+std::atomic<i18n::Lang> s_lang{i18n::Lang::kFr};
 
 // Pas d'atomique, contrairement aux autres préférences : une chaîne ne se lit
 // pas d'un mot. Écrivaine unique : la tâche LVGL (page Configuration).
@@ -163,6 +167,10 @@ void init() {
       val <= static_cast<uint8_t>(UiTheme::kVice)) {
     s_theme.store(static_cast<UiTheme>(val));
   }
+  if (nvs_get_u8(handle, kLangKey, &val) == ESP_OK &&
+      val <= static_cast<uint8_t>(i18n::kLastLang)) {
+    s_lang.store(static_cast<i18n::Lang>(val));
+  }
   size_t len = sizeof(s_ring_file);
   if (nvs_get_str(handle, kRingFileKey, s_ring_file, &len) != ESP_OK) {
     // Clé absente : on garde "ring.wav", le nom historique. nvs_get_str laisse
@@ -178,14 +186,15 @@ void init() {
   ESP_LOGI(TAG,
            "ne pas déranger : %s | stats : %s | volume sonnerie : %u %% | "
            "journal SD : %s | sonnerie : %s | serveur fichiers : %s | "
-           "écho : %u | thème : %u",
+           "écho : %u | thème : %u | langue : %u",
            s_dnd.load() ? "actif" : "inactif",
            s_show_stats.load() ? "affichées" : "masquées",
            (unsigned)s_ring_volume.load(),
            s_sd_log.load() ? "actif" : "inactif",
            s_ring_file[0] ? s_ring_file : "(interne)",
            s_file_server.load() ? "actif" : "inactif",
-           (unsigned)s_echo.load(), (unsigned)s_theme.load());
+           (unsigned)s_echo.load(), (unsigned)s_theme.load(),
+           (unsigned)s_lang.load());
 }
 
 bool dnd() { return s_dnd.load(); }
@@ -355,6 +364,23 @@ void set_ui_theme(UiTheme theme) {
     return;
   }
   nvs_set_u8(handle, kThemeKey, static_cast<uint8_t>(theme));
+  nvs_commit(handle);
+  nvs_close(handle);
+}
+
+i18n::Lang language() { return s_lang.load(); }
+
+void set_language(i18n::Lang lang) {
+  if (static_cast<uint8_t>(lang) > static_cast<uint8_t>(i18n::kLastLang)) {
+    return;
+  }
+  s_lang.store(lang);
+  nvs_handle_t handle;
+  if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open %s en écriture : réglage non persisté", kNamespace);
+    return;
+  }
+  nvs_set_u8(handle, kLangKey, static_cast<uint8_t>(lang));
   nvs_commit(handle);
   nvs_close(handle);
 }

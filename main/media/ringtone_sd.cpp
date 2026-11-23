@@ -7,12 +7,15 @@
 #include "freertos/task.h"
 #include "media/ringtone.h"
 #include "media/wav_parse.h"
+#include "sys/i18n.h"
 #include "sys/prefs.h"
 
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
 #include <strings.h> // strcasecmp : pas dans <cstring>
+
+using i18n::Str;
 
 namespace ringtone_sd {
 namespace {
@@ -56,7 +59,8 @@ void load() {
   snprintf(name, sizeof name, "%s", prefs::ring_file());
 
   s_status = Status::kAbsent;
-  snprintf(s_summary, sizeof s_summary, "sonnerie interne");
+  snprintf(s_summary, sizeof s_summary, "%s",
+           i18n::t(Str::kRingBuiltIn));
 
   // Rendre l'ancienne source AVANT d'en installer une autre. Ordre imposé :
   // désarmer, désinstaller, ATTENDRE, puis libérer. mix_into() sort en tête
@@ -84,7 +88,9 @@ void load() {
 
   FILE *f = fopen(path, "rb");
   if (f == nullptr) {
-    snprintf(s_summary, sizeof s_summary, "%s absent - sonnerie interne", name);
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileMissingFmt),
+             name);
     ESP_LOGI(TAG, "%s absent : sonnerie interne conservée", path);
     return;
   }
@@ -96,7 +102,8 @@ void load() {
   if (hdr == nullptr) {
     fclose(f);
     s_status = Status::kIoError;
-    snprintf(s_summary, sizeof s_summary, "%s illisible - sonnerie interne",
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileUnreadableFmt),
              name);
     ESP_LOGE(TAG, "allocation du tampon d'en-tête refusée");
     return;
@@ -110,7 +117,8 @@ void load() {
   if (err != wav::Error::kOk) {
     fclose(f);
     s_status = Status::kBadFormat;
-    snprintf(s_summary, sizeof s_summary, "%s rejeté : %s", name,
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileRejectedFmt), name,
              wav::error_text(err));
     // Le détail chiffré ne tient pas sur le label de la page Configuration : il
     // vit ici, dans le journal SD relisable depuis la page Debug.
@@ -131,7 +139,8 @@ void load() {
   if (pcm == nullptr) {
     fclose(f);
     s_status = Status::kIoError;
-    snprintf(s_summary, sizeof s_summary, "%s trop lourd - sonnerie interne",
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileTooBigFmt),
              name);
     ESP_LOGE(TAG, "PSRAM insuffisante pour %u échantillons", (unsigned)samples);
     return;
@@ -142,7 +151,8 @@ void load() {
     fclose(f);
     heap_caps_free(pcm);
     s_status = Status::kIoError;
-    snprintf(s_summary, sizeof s_summary, "%s illisible - sonnerie interne",
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileUnreadableFmt),
              name);
     ESP_LOGE(TAG, "lecture de %s incomplète", path);
     return;
@@ -157,7 +167,8 @@ void load() {
       static_cast<uint32_t>(samples) * 1000u / kSampleRate; // < 4,3e9, sûr
   s_status = truncated ? Status::kTooBig : Status::kLoaded;
   if (truncated) {
-    snprintf(s_summary, sizeof s_summary, "%s : tronqué à 30 s", name);
+    snprintf(s_summary, sizeof s_summary,
+             i18n::t(Str::kRingFileCutFmt), name);
   } else {
     snprintf(s_summary, sizeof s_summary, "%s : %lu,%lu s", name,
              (unsigned long)(ms / 1000u), (unsigned long)((ms % 1000u) / 100u));

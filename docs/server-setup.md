@@ -82,14 +82,19 @@ on the scene: ~70 KB in daylight, ~20 KB at night in IR.
 
 ### Entities
 
-About thirty entities, display names in French. Entity IDs are derived from
-the device and entity names (e.g. `button.visiophone_sonner`) — check the
-device page for the exact IDs. Among them:
+About thirty entities, display names in the UI language (French by default,
+English when selected). Entity IDs are derived from the device and entity names
+when HA first sees an entity (e.g. `button.visiophone_sonner`); switching the
+language later only renames them, the IDs stay. Check the device page for the
+exact IDs. Among them:
 
 - `button` **Sonner** — the doorbell: ringtone, street-side ding-dong, call log,
   missed-call snapshot after 30 s.
 - `light` Écran (screen on/off + brightness), `switch` Ne pas déranger (DND),
-- `select` Page affichée (`accueil`, `meteo`, `agenda`, `appels`, `configuration`),
+- `select` Page affichée (`accueil`, `meteo`, `agenda`, `appels`, `configuration`
+  — ids, identical in both languages),
+- `select` Langue / Language (`Francais`, `English`) — persisted, applied at the
+  next restart (press the reboot button),
 - `number` ring / speaker volume, mic gain,
 - `switch` Caméra sans sonnerie (open the camera without ringing),
   `switch` SD log, file server, stats overlay,

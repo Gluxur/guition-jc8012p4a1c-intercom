@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "app/gate_logic.h"
+#include "sys/i18n.h"
 
 #include <cstring>
 
@@ -95,4 +96,19 @@ TEST(GateLogic, StateForOtherEntityIgnored) {
   EXPECT_TRUE(gate_logic::accept_state("cover.a", "cover.a", nullptr));
   EXPECT_FALSE(gate_logic::accept_state("cover.a", "cover.a", "current_position"));
   EXPECT_FALSE(gate_logic::accept_state("", "", ""));
+}
+
+TEST(GateLogic, LookInEnglish) {
+  i18n::init(i18n::Lang::kEn);
+  const Look closed = gate_logic::look(State::kClosed, true, true, false);
+  const Look opening = gate_logic::look(State::kOpening, true, true, false);
+  const Look offline = gate_logic::look(State::kClosed, true, false, false);
+  const Look unset = gate_logic::look(State::kClosed, false, true, false);
+  const Look failed = gate_logic::look(State::kClosed, true, true, true);
+  i18n::init(i18n::Lang::kFr);
+  ExpectLook(closed, "Open the gate", "Open", "", Tone::kOpen, true);
+  ExpectLook(opening, "Stop", "Stop", "", Tone::kStop, true);
+  ExpectLook(offline, "Gate unavailable", "Unavailable", "", Tone::kOff, false);
+  ExpectLook(unset, "Gate", "", "set it up in HA", Tone::kOff, false);
+  ExpectLook(failed, "Gate failed", "Failed", "", Tone::kOff, true);
 }

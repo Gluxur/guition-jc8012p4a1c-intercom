@@ -12,11 +12,14 @@
 #include "app/video_mjpeg.h"
 #include "ui.h"
 #include "ui_weather_v3.h"
+#include "sys/i18n.h"
 #include "theme.h"
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_36);
 
@@ -163,7 +166,7 @@ void view_task(void *arg) {
 
   if (!shown) {
     ESP_LOGE(TAG, "affichage de %s impossible", s_path);
-    ui::show_error("Capture indisponible");
+    ui::show_error(i18n::t(Str::kCallsSnapshotUnavailable));
     // Bloc explicite : vTaskDelete() ne revient jamais et n'exécute donc AUCUN
     // destructeur de variable locale. Un LvglLock encore vivant partirait avec
     // le mutex LVGL pris à vie et figerait l'écran (cf. ui_calls::load_task).
@@ -216,7 +219,7 @@ void create_screen() {
   lv_obj_set_style_border_color(s_back_btn, lv_color_hex(kHair), 0);
   lv_obj_set_style_shadow_width(s_back_btn, 0, 0);
   lv_obj_t *lbl = lv_label_create(s_back_btn);
-  lv_label_set_text(lbl, LV_SYMBOL_LEFT " Retour");
+  lv_label_set_text_fmt(lbl, "%s %s", LV_SYMBOL_LEFT, i18n::t(Str::kBack));
   lv_obj_set_style_text_font(lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(lbl, lv_color_hex(kInk), 0);
   lv_obj_center(lbl);

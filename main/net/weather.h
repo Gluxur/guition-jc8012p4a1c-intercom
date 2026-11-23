@@ -5,7 +5,7 @@
 namespace weather {
 
 struct DayForecast {
-  char day[4];         // "Lun".."Dim" — dérivé du champ datetime (pas de SNTP)
+  char day[4];         // "Lun".."Dim" / "Mon".."Sun" (i18n) — dérivé du champ datetime (pas de SNTP)
   float temp_max;      // NAN si champ "temperature" absent
   float temp_min;      // NAN si champ "templow" absent
   char condition[24];  // "sunny", "partlycloudy"… ; "" si absent

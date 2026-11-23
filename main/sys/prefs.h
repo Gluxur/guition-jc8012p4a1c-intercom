@@ -14,6 +14,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "sys/i18n.h"
+
 namespace prefs {
 
 // Borne d'un nom de fichier de sonnerie. 63 caractères + NUL : au-delà, ce
@@ -110,6 +112,16 @@ enum class UiTheme : uint8_t { kClassic = 0, kVice = 1 };
 
 // Persiste. L'effet n'est visible qu'après redémarrage (cf. ci-dessus).
 void set_ui_theme(UiTheme theme);
+
+// Langue de l'interface. Même contrat que le thème : l'effet n'est visible
+// qu'au redémarrage suivant (cf. sys/i18n.h, qui fige la valeur lue au boot).
+// Écrit depuis la tâche LVGL (page Configuration) et la tâche de l'API (select
+// Home Assistant), lu une fois par app_main avant l'UI.
+// Défaut : français.
+[[nodiscard]] i18n::Lang language();
+
+// Persiste seulement (cf. ci-dessus).
+void set_language(i18n::Lang lang);
 
 // Identifiants d'entités Home Assistant utilisés par la tablette, éditables
 // depuis la page de l'appareil dans HA (entités texte, app/ha_api). Appliqués

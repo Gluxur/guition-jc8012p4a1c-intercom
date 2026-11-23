@@ -17,6 +17,7 @@
 #include "app_config.h"
 #include "bsp.h"
 #include "net/file_path.h"
+#include "sys/i18n.h"
 #include "sys/mutex.h"
 
 // Page unique servie sur "/" : embarquée dans le binaire par EMBED_FILES. Les
@@ -224,11 +225,15 @@ esp_err_t h_info(httpd_req_t *req) {
   const bool busy = s_hooks.sd_busy != nullptr && s_hooks.sd_busy();
   // sd_capacity() lit la carte : on ne l'appelle pas quand elle est occupée.
   const bool ok = !busy && bsp::Bsp::instance().sd_capacity(&total, &freeb);
-  char buf[128];
+  char buf[144];
+  // "lang" : la page est un fichier statique embarqué, c'est ici qu'elle
+  // apprend la langue de l'interface (figée au boot, cf. sys/i18n.h).
   snprintf(buf, sizeof(buf),
-           "{\"total\":%llu,\"free\":%llu,\"busy\":%s,\"ok\":%s}",
+           "{\"total\":%llu,\"free\":%llu,\"busy\":%s,\"ok\":%s,"
+           "\"lang\":\"%s\"}",
            (unsigned long long)total, (unsigned long long)freeb,
-           busy ? "true" : "false", ok ? "true" : "false");
+           busy ? "true" : "false", ok ? "true" : "false",
+           i18n::lang() == i18n::Lang::kEn ? "en" : "fr");
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_sendstr(req, buf);
 }

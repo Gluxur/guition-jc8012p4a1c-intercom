@@ -26,25 +26,51 @@ footer{padding:12px 16px;color:#8f98aa;font-size:14px}
 </style>
 </head>
 <body>
-<header><h1>Carte SD</h1><span id="crumb"></span></header>
+<header><h1 data-t="card">Carte SD</h1><span id="crumb"></span></header>
 <div id="err"></div>
 <main>
-<table><thead><tr><th>Nom</th><th class="size">Taille</th><th></th></tr></thead>
+<table><thead><tr><th data-t="name">Nom</th><th class="size" data-t="size">Taille</th><th></th></tr></thead>
 <tbody id="rows"></tbody></table>
-<div id="drop">Déposer un fichier ici, ou <button id="pick">choisir…</button>
+<div id="drop"><span data-t="drop">Déposer un fichier ici, ou</span> <button id="pick" data-t="pick">choisir…</button>
 <input id="file" type="file" hidden>
 <progress id="prog" value="0" max="100" hidden></progress></div>
 </main>
 <footer id="info"></footer>
 <script>
+// Langue de l'interface de l'appareil, donnée par /api/info (la page est un
+// fichier statique embarqué). Français tant qu'elle n'est pas connue.
+const L={
+fr:{title:"Visiophone — carte SD",card:"Carte SD",name:"Nom",size:"Taille",
+  drop:"Déposer un fichier ici, ou",pick:"choisir…",del:"Supprimer",flash:"Flasher",
+  flashAsk:n=>"Flasher "+n+" ? L'appareil redemarrera.",refused:"Refus : ",
+  flashOk:"Mise a jour lancee. L'appareil redemarre dans une minute.",
+  free:(f,t)=>f+" libres sur "+t,noCap:"capacite indisponible",error:"Erreur : ",
+  delAsk:n=>"Supprimer "+n+" ?",delRefused:"Suppression refusée : ",
+  upRefused:"Envoi refusé : ",upCut:"Envoi interrompu",units:["o","Ko","Mo"]},
+en:{title:"Visiophone — SD card",card:"SD card",name:"Name",size:"Size",
+  drop:"Drop a file here, or",pick:"choose…",del:"Delete",flash:"Flash",
+  flashAsk:n=>"Flash "+n+"? The device will restart.",refused:"Refused: ",
+  flashOk:"Update started. The device restarts within a minute.",
+  free:(f,t)=>f+" free of "+t,noCap:"capacity unavailable",error:"Error: ",
+  delAsk:n=>"Delete "+n+"?",delRefused:"Delete refused: ",
+  upRefused:"Upload refused: ",upCut:"Upload interrupted",units:["B","KB","MB"]}};
+let T=L.fr;
+function setLang(l){
+  if(!L[l]||T===L[l])return;
+  T=L[l];document.documentElement.lang=l;document.title=T.title;
+  for(const e of document.querySelectorAll("[data-t]"))e.textContent=T[e.dataset.t];
+}
 const ROOT="/sdcard";let dir=ROOT;
 const $=i=>document.getElementById(i);
-const human=n=>n<1024?n+" o":n<1048576?(n/1024).toFixed(1)+" Ko":(n/1048576).toFixed(1)+" Mo";
+const human=n=>n<1024?n+" "+T.units[0]:n<1048576?(n/1024).toFixed(1)+" "+T.units[1]:(n/1048576).toFixed(1)+" "+T.units[2];
 function err(m){$("err").textContent=m;$("err").style.display=m?"block":"none"}
 async function jget(u){const r=await fetch(u);if(!r.ok)throw new Error(await r.text()||r.status);return r.json()}
 async function load(){
   err("");
   try{
+    // Avant la liste : la langue doit être connue pour libeller les boutons.
+    const i=await jget("/api/info");
+    setLang(i.lang);
     const d=await jget("/api/ls?dir="+encodeURIComponent(dir));
     $("crumb").textContent=dir;
     const tb=$("rows");tb.textContent="";
@@ -62,29 +88,27 @@ async function load(){
         a.textContent=f.name;c0.appendChild(a);}
       const c1=tr.insertCell();c1.className="size";c1.textContent=f.dir?"":human(f.size);
       const c2=tr.insertCell();
-      if(!f.dir){const b=document.createElement("button");b.textContent="Supprimer";
+      if(!f.dir){const b=document.createElement("button");b.textContent=T.del;
         b.onclick=()=>del(p,f.name);c2.appendChild(b);}
       if(!f.dir&&/\.bin$/i.test(f.name)){
-        const b2=document.createElement("button");b2.textContent="Flasher";
+        const b2=document.createElement("button");b2.textContent=T.flash;
         b2.style.marginLeft="6px";
         b2.onclick=async()=>{
-          if(!confirm("Flasher "+f.name+" ? L'appareil redemarrera."))return;
+          if(!confirm(T.flashAsk(f.name)))return;
           const r=await fetch("/api/ota?path="+encodeURIComponent(p),{method:"POST"});
-          if(!r.ok){err("Refus : "+await r.text());return}
-          err("Mise a jour lancee. L'appareil redemarre dans une minute.");
+          if(!r.ok){err(T.refused+await r.text());return}
+          err(T.flashOk);
         };
         c2.appendChild(b2);
       }
     }
-    const i=await jget("/api/info");
-    $("info").textContent=i.ok?human(i.free)+" libres sur "+human(i.total)
-                              :"capacite indisponible";
-  }catch(e){err("Erreur : "+e.message)}
+    $("info").textContent=i.ok?T.free(human(i.free),human(i.total)):T.noCap;
+  }catch(e){err(T.error+e.message)}
 }
 async function del(p,name){
-  if(!confirm("Supprimer "+name+" ?"))return;
+  if(!confirm(T.delAsk(name)))return;
   const r=await fetch("/api/rm?path="+encodeURIComponent(p),{method:"POST"});
-  if(!r.ok){err("Suppression refusée : "+await r.text());return}
+  if(!r.ok){err(T.delRefused+await r.text());return}
   load();
 }
 function upload(f){
@@ -94,8 +118,8 @@ function upload(f){
   $("prog").hidden=false;$("prog").value=0;
   x.upload.onprogress=e=>{if(e.lengthComputable)$("prog").value=e.loaded*100/e.total};
   x.onload=()=>{$("prog").hidden=true;
-    if(x.status>=200&&x.status<300){load()}else{err("Envoi refusé : "+x.responseText)}};
-  x.onerror=()=>{$("prog").hidden=true;err("Envoi interrompu")};
+    if(x.status>=200&&x.status<300){load()}else{err(T.upRefused+x.responseText)}};
+  x.onerror=()=>{$("prog").hidden=true;err(T.upCut)};
   x.send(f);
 }
 $("pick").onclick=()=>$("file").click();

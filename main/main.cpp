@@ -27,6 +27,7 @@
 #include "net/weather.h"
 #include "net/wifi_net.h"
 #include "sys/dbg_log.h"
+#include "sys/i18n.h"
 #include "sys/net_wdt.h"
 #include "sys/ota_ctrl.h"
 #include "sys/prefs.h"
@@ -320,6 +321,9 @@ extern "C" void app_main(void) {
 
   // Préférences de confort (DND). Après la NVS, avant l'UI qui les affiche.
   prefs::init();
+  // Langue figée ici, une fois : avant l'UI et ha_api, qui construisent leurs
+  // libellés au démarrage. Un changement ne vaut qu'au boot suivant.
+  i18n::init(prefs::language());
 
   const esp_err_t bsp_err = bsp::Bsp::instance().init();
   if (bsp_err != ESP_OK) {

@@ -1,6 +1,10 @@
 #include "media/wav_parse.h"
 
+#include "sys/i18n.h"
+
 #include <cstring>
+
+using i18n::Str;
 
 namespace wav {
 namespace {
@@ -107,28 +111,29 @@ Error parse(const uint8_t *hdr, size_t len, Info &out) {
   return fmt_seen ? Error::kNoData : Error::kNoFmt;
 }
 
+// Affiché tel quel sur la page Configuration : suit la langue de l'UI.
 const char *error_text(Error e) {
   switch (e) {
   case Error::kOk:
     return "ok";
   case Error::kTruncated:
-    return "fichier tronqué";
+    return i18n::t(Str::kWavTruncated);
   case Error::kNotRiff:
-    return "pas un fichier RIFF";
+    return i18n::t(Str::kWavNotRiff);
   case Error::kNotWave:
-    return "RIFF mais pas WAVE";
+    return i18n::t(Str::kWavNotWave);
   case Error::kNoFmt:
-    return "chunk fmt absent";
+    return i18n::t(Str::kWavNoFmt);
   case Error::kNotPcm16:
-    return "PCM 16 bits requis";
+    return i18n::t(Str::kWavNotPcm16);
   case Error::kBadRate:
-    return "8000 Hz requis";
+    return i18n::t(Str::kWavBadRate);
   case Error::kNotMono:
-    return "mono requis";
+    return i18n::t(Str::kWavNotMono);
   case Error::kNoData:
-    return "chunk data absent ou vide";
+    return i18n::t(Str::kWavNoData);
   }
-  return "erreur inconnue";
+  return i18n::t(Str::kWavUnknown);
 }
 
 } // namespace wav

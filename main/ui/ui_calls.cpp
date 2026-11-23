@@ -11,10 +11,13 @@
 #include "app/call_history.h"
 #include "ui.h"
 #include "ui_call_viewer.h"
+#include "sys/i18n.h"
 #include "theme.h"
 
 #include <atomic>
 #include <cstdint>
+
+using i18n::Str;
 
 LV_FONT_DECLARE(montserrat_fr_24);
 LV_FONT_DECLARE(montserrat_fr_36);
@@ -85,15 +88,20 @@ void add_row_locked(const call_log::Entry &e, size_t idx) {
   lv_obj_align(stamp, LV_ALIGN_LEFT_MID, 20, 0);
 
   lv_obj_t *verdict = lv_label_create(row);
-  lv_label_set_text(verdict, e.missed ? "Manqué" : "Répondu");
+  lv_label_set_text(verdict, e.missed ? i18n::t(Str::kCallsMissed)
+                                     : i18n::t(Str::kCallsAnswered));
   lv_obj_set_style_text_font(verdict, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(
       verdict, lv_color_hex(e.missed ? kMissed : kAnswered), 0);
   lv_obj_align(verdict, LV_ALIGN_LEFT_MID, 520, 0);
 
   lv_obj_t *hint = lv_label_create(row);
-  lv_label_set_text(hint, has_shot ? LV_SYMBOL_IMAGE " Voir la photo"
-                                   : "Pas de photo");
+  if (has_shot) {
+    lv_label_set_text_fmt(hint, "%s %s", LV_SYMBOL_IMAGE,
+                          i18n::t(Str::kCallsViewPhoto));
+  } else {
+    lv_label_set_text(hint, i18n::t(Str::kCallsNoPhoto));
+  }
   lv_obj_set_style_text_font(hint, &montserrat_fr_24, 0);
   lv_obj_set_style_text_color(hint, lv_color_hex(has_shot ? kInk : kSub), 0);
   lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -24, 0);
@@ -129,7 +137,8 @@ void load_task(void *arg) {
     s_count = n;
     lv_obj_clean(s_list); // repart d'une liste vide : cf. la note sur s_entries
     if (n == 0) {
-      lv_label_set_text(s_status, "Aucun appel enregistré");
+      lv_label_set_text(s_status,
+                        i18n::t(Str::kCallsNone));
     } else {
       lv_label_set_text(s_status, "");
       for (size_t i = 0; i < n; i++) {
@@ -162,7 +171,7 @@ void create_screen() {
   lv_obj_set_style_pad_all(s_scr, 0, 0);
 
   lv_obj_t *title = lv_label_create(s_scr);
-  lv_label_set_text(title, LV_SYMBOL_CALL " Appels");
+  lv_label_set_text_fmt(title, "%s %s", LV_SYMBOL_CALL, i18n::t(Str::kHomeCalls));
   lv_obj_set_style_text_font(title, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(kInk), 0);
   lv_obj_align(title, LV_ALIGN_TOP_LEFT, 24, 18);
@@ -179,7 +188,7 @@ void create_screen() {
   lv_obj_set_style_bg_color(back, lv_color_hex(ui::theme::active.btn_back), 0);
   lv_obj_set_style_shadow_width(back, 0, 0); // cf. contrainte CPU, ui.cpp
   lv_obj_t *back_lbl = lv_label_create(back);
-  lv_label_set_text(back_lbl, "Retour");
+  lv_label_set_text(back_lbl, i18n::t(Str::kBack));
   lv_obj_set_style_text_font(back_lbl, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(back_lbl, lv_color_white(), 0);
   lv_obj_center(back_lbl);
@@ -210,7 +219,7 @@ void open_screen_from_event() {
   // sur s_entries pendant que celle-ci le réécrit.
   lv_obj_clean(s_list);
   s_count = 0;
-  lv_label_set_text(s_status, "Chargement...");
+  lv_label_set_text(s_status, i18n::t(Str::kLoading));
   // Priorité 1, cœur 0 : même choix que la tâche disque de ui_sdlog — elle ne
   // dispute jamais le cœur au drain TCP du flux MJPEG, qui y tourne bien plus
   // haut. 6144 et non les 4096 de ui_sdlog : celle-ci enchaîne la lecture
@@ -219,7 +228,7 @@ void open_screen_from_event() {
   if (xTaskCreatePinnedToCore(load_task, "calls_load", 6144, nullptr, 1, nullptr,
                               0) != pdPASS) {
     ESP_LOGE(TAG, "création calls_load échouée : liste non chargée");
-    lv_label_set_text(s_status, "Lecture du journal impossible");
+    lv_label_set_text(s_status, i18n::t(Str::kCallsLogUnreadable));
     s_loading.store(false, std::memory_order_release);
   }
 }

@@ -11,9 +11,12 @@
 #include "icons.h"
 #include "lvgl.h"
 #include "sys/prefs.h"
+#include "sys/i18n.h"
 #include "theme.h"
 #include <cstdio>
 #include <atomic>
+
+using i18n::Str;
 
 // Écran caméra V2 : la vidéo (flux go2rtc 800x1280 = 720p transposé + padding)
 // couvre TOUT le framebuffer, le décodeur JPEG matériel y écrivant directement
@@ -380,12 +383,14 @@ void update_stats(const char *text) {
 static void state_chip_refresh() {
   char buf[48];
   if (!s_answered) {
-    snprintf(buf, sizeof buf, "%s  Micro coupé", ui::icon::kMicOff);
+    snprintf(buf, sizeof buf, "%s  %s", ui::icon::kMicOff,
+             i18n::t(Str::kCamMicOff));
   } else if (s_shown_min <= 0) {
-    snprintf(buf, sizeof buf, "%s  En ligne", ui::icon::kMic);
+    snprintf(buf, sizeof buf, "%s  %s", ui::icon::kMic,
+             i18n::t(Str::kCamLive));
   } else {
-    snprintf(buf, sizeof buf, "%s  En ligne · %ld min", ui::icon::kMic,
-             (long)s_shown_min);
+    snprintf(buf, sizeof buf, i18n::t(Str::kCamLiveMinutesFmt),
+             ui::icon::kMic, (long)s_shown_min);
   }
   lv_label_set_text(s_state_lbl, buf);
   s_band_dirty.store(true, std::memory_order_relaxed);
@@ -402,7 +407,8 @@ static void answer_set_visual(bool active) {
   lv_obj_set_style_text_color(s_answer_lbl, lv_color_white(), 0);
   char buf[40];
   snprintf(buf, sizeof buf, "%s  %s", active ? ui::icon::kHangUp : LV_SYMBOL_CALL,
-           active ? "Raccrocher" : "Répondre");
+           active ? i18n::t(Str::kCamHangUp)
+                  : i18n::t(Str::kCamAnswer));
   lv_label_set_text(s_answer_lbl, buf);
   lv_obj_set_style_bg_color(s_state_chip, lv_color_hex(active ? kLiveBg : kBadge),
                             0);
@@ -604,7 +610,7 @@ void create_screen(const ui::Callbacks &cbs) {
    * mode direct — avant la première frame, ou sous un bandeau d'erreur —, et le
    * décodeur recouvre tout le framebuffer à chaque image. */
   lv_obj_t *connecting = lv_label_create(video_zone);
-  lv_label_set_text(connecting, "Connexion à la caméra...");
+  lv_label_set_text(connecting, i18n::t(Str::kCamConnecting));
   lv_obj_set_style_text_font(connecting, &montserrat_fr_36, 0);
   lv_obj_set_style_text_color(connecting, lv_color_hex(kSub), 0);
   lv_obj_align(connecting, LV_ALIGN_CENTER, 0, -kBandH / 2);

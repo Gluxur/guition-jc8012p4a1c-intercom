@@ -23,6 +23,7 @@
 #include "net/esphome_frame.h"
 #include "net/esphome_pb.h"
 #include "net/noise_nnpsk0.h"
+#include "sys/i18n.h"
 
 namespace esphome_api {
 namespace {
@@ -373,7 +374,7 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
   const uint32_t cat = (uint32_t)e.category;
   w.str(1, e.object_id);
   w.fixed32(2, key);
-  w.str(3, e.name);
+  w.str(3, i18n::t(e.name));
   switch (e.kind) {
   case Kind::kBinarySensor:
     w.str(5, e.device_class);
@@ -411,7 +412,9 @@ uint16_t encode_list_entity(const Entity &e, esphome_pb::Writer &w) {
   case Kind::kSelect:
     w.str(5, e.icon);
     for (uint8_t i = 0; i < e.option_count; i++) {
-      w.bytes_always(6, e.options[i], strlen(e.options[i]));
+      const char *opt = e.option_names != nullptr ? i18n::t(e.option_names[i])
+                                                  : e.options[i];
+      w.bytes_always(6, opt, strlen(opt));
     }
     w.u32(8, cat);
     return kListSelect;
