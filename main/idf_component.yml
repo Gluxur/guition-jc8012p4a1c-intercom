@@ -13,9 +13,10 @@ dependencies:
   espressif/esp_wifi_remote: ">=0.1.0"
   # Épinglé en 2.12.x DÉLIBÉRÉMENT. esp_hosted 3.x est une réécriture du transport
   # (arborescence eh_common/eh_cp_*) qui exige un firmware co-processeur C6 assorti :
-  # le C6 de ce visiophone tourne en 2.x. La borne `<3.0` n'existe dans le manifeste
-  # d'esp_wifi_remote qu'à partir de sa 1.6.3 ; le lock fige la 1.6.1, qui ne la porte
-  # pas, donc rien n'empêcherait le solveur de partir en 3.x sans cette ligne.
+  # le C6 de ce visiophone tourne en 2.x. esp_wifi_remote n'a porté une borne `<3.0`
+  # qu'en 1.6.3 : la 1.6.4 l'a retirée ("Revert esp-hosted restriction") et ne
+  # demande plus que `>=2.11`. Cette ligne est donc le SEUL verrou contre un
+  # passage du solveur en 3.x.
   # Ne relever qu'en reflashant le C6 et en revalidant le débit SDIO.
   espressif/esp_hosted: "~2.12"
   lvgl/lvgl: "~9.5.0"

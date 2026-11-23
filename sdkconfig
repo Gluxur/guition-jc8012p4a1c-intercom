@@ -3686,6 +3686,13 @@ CONFIG_TINYUSB_MODE_DMA=y
 # end of TinyUSB callbacks
 
 #
+# Power management
+#
+# default:
+CONFIG_TINYUSB_SOC_USB_UTMI_PHY_SUPPORTED=y
+# end of Power management
+
+#
 # Descriptor configuration
 #
 
@@ -3716,6 +3723,13 @@ CONFIG_TINYUSB_MSC_BUFSIZE=8192
 # default:
 CONFIG_TINYUSB_MSC_MOUNT_PATH="/data"
 # end of Mass Storage Class (MSC)
+
+#
+# Media Transfer Protocol (MTP)
+#
+# default:
+# CONFIG_TINYUSB_MTP_ENABLED is not set
+# end of Media Transfer Protocol (MTP)
 
 #
 # Communication Device Class (CDC)
