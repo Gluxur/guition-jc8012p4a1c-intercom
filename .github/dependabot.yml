@@ -1,0 +1,17 @@
+# Only the GitHub Actions are tracked: neither Dependabot nor Renovate knows the
+# ESP-IDF component manager (main/idf_component.yml + dependencies.lock), those
+# stay manual and measured on target.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A freshly published release is where a hijacked tag shows up first.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"

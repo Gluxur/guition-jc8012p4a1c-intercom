@@ -4,12 +4,18 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container: espressif/idf:v6.0.1
+    # Digest pin: a re-pushed tag would otherwise change the toolchain silently.
+    container: espressif/idf:v6.0.1@sha256:efc19fae2f52fc6873630c668da26aa834139a063b5fb73a46ebc0dbd217b587
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build firmware
         shell: bash
         env:
@@ -26,7 +32,7 @@ jobs:
           python -m pip install -q "idf-component-manager==3.0.3" "esp-idf-kconfig==3.11.1"
           idf.py build
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: firmware
           path: |
