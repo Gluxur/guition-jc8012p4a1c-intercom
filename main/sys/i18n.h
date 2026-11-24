@@ -239,6 +239,7 @@ enum class Str : uint16_t {
   kHaEntReboot,
   kHaEntOtaSd,
   kHaEntPresenceSnapshot,
+  kHaEntPresenceCaptures,
   kHaEntRssi,
   kHaEntIp,
   kHaEntUptime,

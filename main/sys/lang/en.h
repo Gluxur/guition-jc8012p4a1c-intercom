@@ -221,6 +221,7 @@ inline constexpr Entry kStrings[] = {
     {S::kHaEntReboot, "Restart"},
     {S::kHaEntOtaSd, "Update from SD card"},
     {S::kHaEntPresenceSnapshot, "Presence camera snapshot (SD)"},
+    {S::kHaEntPresenceCaptures, "Snapshot on each detection (SD)"},
     {S::kHaEntRssi, "RSSI Wi-Fi"},
     {S::kHaEntIp, "IP address"},
     {S::kHaEntUptime, "Uptime"},

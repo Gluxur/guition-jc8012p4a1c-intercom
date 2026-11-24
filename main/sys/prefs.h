@@ -82,6 +82,15 @@ void set_sd_log_enabled(bool on);
 // Applique et persiste. Même contrat que set_dnd (effet immédiat).
 void set_beta_channel(bool on);
 
+// Clichés de détection : à chaque passage absent -> présent, la caméra de
+// présence écrit une vignette datée sous cfg::sd::kPresenceDir. Défaut : coupé.
+// Diagnostic des fausses détections (chat, reflet) ; les images restent sur la
+// carte SD. Écrit depuis la tâche de l'API, lu par la tâche presence.
+[[nodiscard]] bool presence_captures();
+
+// Applique et persiste. Même contrat que set_dnd (effet immédiat).
+void set_presence_captures(bool on);
+
 // Serveur de fichiers Wi-Fi. Défaut : éteint. Toute IO sur la carte ajoute de
 // la gigue au drain TCP du flux MJPEG ; un serveur permanent serait une porte
 // ouverte en permanence sur ce chemin. Lu au boot par app_main, écrit depuis la

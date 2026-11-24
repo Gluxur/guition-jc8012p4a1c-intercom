@@ -2,8 +2,7 @@
 
 #include <atomic>
 #include <cstdio>
-#include <fcntl.h>
-#include <unistd.h>
+#include <ctime>
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -16,7 +15,8 @@
 #include "app/motion_detect.h"
 #include "app_config.h"
 #include "bsp.h"
-#include "sys/usb_msc.h"
+#include "sys/prefs.h"
+#include "sys/sd_image.h"
 
 namespace presence {
 
@@ -61,46 +61,106 @@ void set_present(bool p) {
   }
 }
 
-// Vignette : un pixel sur 4 dans chaque axe, 8 bits de poids fort. POSIX
-// open/write et non FILE* : cf. docs/hardware-notes.md (picolibc déborde d'un
-// octet du tampon FILE) — inutile de rouvrir ce risque pour un fichier jetable.
-void write_snapshot(const uint8_t *frame) {
-  if (bsp::Bsp::instance().sd_state() != bsp::SdState::kMounted ||
-      usb_msc::status() == usb_msc::Status::kActive) {
-    ESP_LOGW(TAG, "cliché ignoré : carte SD indisponible");
-    return;
-  }
-  constexpr int kTw = bsp::Bsp::kCamWidth / 4;
-  constexpr int kTh = bsp::Bsp::kCamHeight / 4;
+// Vignette : un pixel sur 4 dans chaque axe, 8 bits de poids fort.
+constexpr int kTw = bsp::Bsp::kCamWidth / 4;
+constexpr int kTh = bsp::Bsp::kCamHeight / 4;
+constexpr size_t kThumbBytes = static_cast<size_t>(kTw) * kTh;
+
+void make_thumb(const uint8_t *frame, uint8_t *img) {
   constexpr int kStride = bsp::Bsp::kCamWidth * 10 / 8;
-  uint8_t *img = static_cast<uint8_t *>(
-      heap_caps_malloc(static_cast<size_t>(kTw) * kTh, MALLOC_CAP_SPIRAM));
-  if (img == nullptr) {
-    ESP_LOGE(TAG, "cliché : pas de PSRAM");
-    return;
-  }
   for (int y = 0; y < kTh; y++) {
     const uint8_t *row = frame + static_cast<size_t>(y) * 4 * kStride;
     for (int x = 0; x < kTw; x++) {
       img[y * kTw + x] = row[x * 5]; // groupe de 4 px : 1er pixel
     }
   }
-  const int fd = open(cfg::sd::kPresenceSnapshot, O_WRONLY | O_CREAT | O_TRUNC,
-                      0644);
-  if (fd < 0) {
-    ESP_LOGE(TAG, "cliché : ouverture impossible");
-    heap_caps_free(img);
+}
+
+// Cadre blanc autour des cellules qui ont bougé : c'est lui qui dit si le
+// déclencheur est au sol (un chat) ou sur un mur (un reflet).
+void draw_box(uint8_t *img, const motion::Diff &d) {
+  if (d.x0 < 0) {
     return;
   }
-  char hdr[32];
-  const int n = snprintf(hdr, sizeof hdr, "P5\n%d %d\n255\n", kTw, kTh);
-  bool ok = n > 0 && write(fd, hdr, n) == n;
-  ok = ok && write(fd, img, static_cast<size_t>(kTw) * kTh) ==
-                 static_cast<ssize_t>(kTw) * kTh;
-  close(fd);
+  const int px0 = d.x0 * kTw / motion::kGridW;
+  const int px1 = (d.x1 + 1) * kTw / motion::kGridW - 1;
+  const int py0 = d.y0 * kTh / motion::kGridH;
+  const int py1 = (d.y1 + 1) * kTh / motion::kGridH - 1;
+  for (int x = px0; x <= px1; x++) {
+    img[py0 * kTw + x] = 255;
+    img[py1 * kTw + x] = 255;
+  }
+  for (int y = py0; y <= py1; y++) {
+    img[y * kTw + px0] = 255;
+    img[y * kTw + px1] = 255;
+  }
+}
+
+void write_snapshot(const uint8_t *frame) {
+  if (!sd_image::sd_ready()) {
+    ESP_LOGW(TAG, "cliché ignoré : carte SD indisponible");
+    return;
+  }
+  uint8_t *img =
+      static_cast<uint8_t *>(heap_caps_malloc(kThumbBytes, MALLOC_CAP_SPIRAM));
+  if (img == nullptr) {
+    ESP_LOGE(TAG, "cliché : pas de PSRAM");
+    return;
+  }
+  make_thumb(frame, img);
+  const bool ok =
+      sd_image::write_pgm(cfg::sd::kPresenceSnapshot, img, kTw, kTh, nullptr);
   heap_caps_free(img);
   ESP_LOGI(TAG, "cliché %s : %s", cfg::sd::kPresenceSnapshot,
            ok ? "écrit" : "échec d'écriture");
+}
+
+// Cliché de détection, nommé par l'heure locale pour que l'ordre des noms soit
+// l'ordre chronologique (sd_image::make_room supprime le plus petit). Avant
+// SNTP, préfixe 00000000 : ces fichiers-là partent les premiers.
+void write_capture(const uint8_t *frame, const motion::Diff &d,
+                   const motion::Exposure &exp, uint8_t mean) {
+  if (!sd_image::sd_ready()) {
+    return;
+  }
+  char stamp[24];
+  char path[64];
+  const time_t now = time(nullptr);
+  struct tm t = {};
+  localtime_r(&now, &t);
+  if (t.tm_year + 1900 >= 2025) {
+    strftime(stamp, sizeof stamp, "%Y-%m-%d %H:%M:%S", &t);
+    char name[24];
+    strftime(name, sizeof name, "%Y%m%d-%H%M%S", &t);
+    snprintf(path, sizeof path, "%s/%s.pgm", cfg::sd::kPresenceDir, name);
+  } else {
+    const long long up_s = esp_timer_get_time() / 1000000;
+    snprintf(stamp, sizeof stamp, "uptime %llds", up_s);
+    snprintf(path, sizeof path, "%s/00000000-%06lld.pgm", cfg::sd::kPresenceDir,
+             up_s);
+  }
+  if (!sd_image::make_room(cfg::sd::kPresenceDir, ".pgm",
+                           cfg::sd::kPresenceKeep)) {
+    ESP_LOGW(TAG, "clichés : répertoire %s inutilisable", cfg::sd::kPresenceDir);
+    return;
+  }
+  uint8_t *img =
+      static_cast<uint8_t *>(heap_caps_malloc(kThumbBytes, MALLOC_CAP_SPIRAM));
+  if (img == nullptr) {
+    return;
+  }
+  make_thumb(frame, img);
+  draw_box(img, d);
+  char comment[128];
+  snprintf(comment, sizeof comment,
+           "%s changed=%d max_delta=%d box=%d,%d-%d,%d mean=%u pose=%u "
+           "gain=%u/16",
+           stamp, d.changed, d.max_delta, d.x0, d.y0, d.x1, d.y1, mean,
+           (unsigned)exp.lines, (unsigned)exp.gain_x16);
+  const bool ok = sd_image::write_pgm(path, img, kTw, kTh, comment);
+  heap_caps_free(img);
+  ESP_LOGI(TAG, "détection : %s (%d cellules, max_delta=%d) %s", path,
+           d.changed, d.max_delta, ok ? "écrit" : "échec");
 }
 
 void presence_task(void *) {
@@ -184,8 +244,15 @@ void presence_task(void *) {
         stat_max_changed = d.changed;
       }
       if (d.changed >= kMinCells) {
+        const bool was_present = s_present.load();
         last_motion_us = now;
         set_present(true);
+        // Sur la transition seulement : une personne qui reste devant
+        // l'écran ne remplit pas la carte. `frame` est l'image même qui a
+        // déclenché, et `cur.mean` l'exposition qu'elle a vue.
+        if (!was_present && prefs::presence_captures()) {
+          write_capture(frame, d, exp, cur.mean);
+        }
       }
     }
     if (s_present.load() && now - last_motion_us > kHoldUs) {
@@ -225,10 +292,11 @@ void presence_task(void *) {
 void init(const Hooks &hooks) {
   s_hooks = hooks;
   // Cœur 0, priorité 2 : la caméra ne tourne que hors session, quand le cœur
-  // du drain MJPEG est au repos. Pile en PSRAM (règle projet) ; 6 Ko pour
-  // snprintf/ESP_LOGI et l'IO SD du cliché (FATFS veut de la marge, cf.
+  // du drain MJPEG est au repos. Pile en PSRAM (règle projet) ; 8 Ko et non
+  // 6 depuis les clichés de détection : opendir/readdir/unlink s'ajoutent à
+  // l'IO SD, et la règle projet veut >= 8 Ko pour toute tâche FATFS (cf.
   // mémoire « cam_stop stack overflow »).
-  if (xTaskCreatePinnedToCoreWithCaps(presence_task, "presence", 6144, nullptr,
+  if (xTaskCreatePinnedToCoreWithCaps(presence_task, "presence", 8192, nullptr,
                                       2, nullptr, 0,
                                       MALLOC_CAP_SPIRAM) != pdPASS) {
     ESP_LOGE(TAG, "création de la tâche impossible");

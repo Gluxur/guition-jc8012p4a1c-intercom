@@ -46,7 +46,7 @@ void reduce_raw10(const uint8_t *frame, int width, int height, int row_step,
 
 Diff compare(const Grid &prev, const Grid &cur, int threshold) {
   const int dm = static_cast<int>(cur.mean) - static_cast<int>(prev.mean);
-  Diff d{0, 0};
+  Diff d{0, 0, -1, -1, -1, -1};
   for (int cy = 0; cy < kGridH; cy++) {
     for (int cx = 0; cx < kGridW; cx++) {
       const int delta = std::abs(static_cast<int>(cur.cell[cy][cx]) -
@@ -55,6 +55,14 @@ Diff compare(const Grid &prev, const Grid &cur, int threshold) {
         d.max_delta = delta;
       }
       if (delta > threshold) {
+        if (d.changed == 0) {
+          d.x0 = d.x1 = cx;
+          d.y0 = d.y1 = cy;
+        } else {
+          d.x0 = cx < d.x0 ? cx : d.x0;
+          d.x1 = cx > d.x1 ? cx : d.x1;
+          d.y1 = cy; // parcours par lignes croissantes
+        }
         d.changed++;
       }
     }

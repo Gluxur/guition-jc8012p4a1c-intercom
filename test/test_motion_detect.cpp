@@ -96,6 +96,28 @@ TEST(MotionCompare, LocalChangeIsCounted) {
   EXPECT_EQ(d.max_delta, 40);
 }
 
+// Deux cellules éloignées : le cadre englobe les deux, bornes incluses.
+TEST(MotionCompare, BoxBoundsChangedCells) {
+  const auto a = flat(80);
+  auto b = flat(80);
+  b.cell[5][3] = 120;  // ligne 5, colonne 3
+  b.cell[2][10] = 120; // ligne 2, colonne 10
+  const auto d = motion::compare(a, b, 10);
+  EXPECT_EQ(d.x0, 3);
+  EXPECT_EQ(d.y0, 2);
+  EXPECT_EQ(d.x1, 10);
+  EXPECT_EQ(d.y1, 5);
+}
+
+TEST(MotionCompare, NoChangeGivesNoBox) {
+  const auto a = flat(80);
+  const auto d = motion::compare(a, a, 10);
+  EXPECT_EQ(d.x0, -1);
+  EXPECT_EQ(d.y0, -1);
+  EXPECT_EQ(d.x1, -1);
+  EXPECT_EQ(d.y1, -1);
+}
+
 TEST(MotionCompare, ChangeAtThresholdIsNotCounted) {
   const auto a = flat(80);
   auto b = flat(80);

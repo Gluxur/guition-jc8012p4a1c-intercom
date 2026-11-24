@@ -33,6 +33,10 @@ void reduce_raw10(const uint8_t *frame, int width, int height, int row_step,
 struct Diff {
   int changed;  // cellules au-delà du seuil
   int max_delta; // plus grand écart, pour régler les seuils sur mesure
+  // Cadre des cellules comptées dans `changed`, bornes incluses, en cellules ;
+  // -1 partout si aucune. Sert aux clichés de diagnostic : voir CE qui a bougé
+  // (un chat au sol, un reflet sur le mur) plutôt que deviner sur un compte.
+  int x0, y0, x1, y1;
 };
 
 // Compare deux grilles EN RETIRANT l'écart de moyenne globale : un nuage qui
