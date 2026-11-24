@@ -27,7 +27,7 @@ void request(const char *url);
 void request_file(const char *path);
 
 // Demande à la tâche OTA d'interroger la dernière release GitHub du projet
-// (cfg::kGithubRepo). Non bloquant ; refait ensuite seul toutes les 6 h. Sauté
+// (cfg::kGithubRepo), sur le canal de prefs::beta_channel(). Non bloquant ; refait ensuite seul toutes les 6 h. Sauté
 // pendant un appel : un handshake TLS réclame de la SRAM interne.
 void request_check();
 

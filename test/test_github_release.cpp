@@ -106,3 +106,58 @@ TEST(GithubRelease, NotesCutOnUtf8Boundary) {
   EXPECT_EQ(strlen(r.notes), 254u);
   EXPECT_EQ(std::string(r.notes), std::string(254, 'a'));
 }
+
+namespace {
+
+// Hand-written, shaped like GET /repos/{owner}/{repo}/releases?per_page=N:
+// an array, newest first, drafts invisible to anonymous callers but handled.
+std::string Entry(const std::string &tag, bool prerelease, bool draft,
+                  const std::string &asset_url) {
+  return std::string(R"({"tag_name": ")") + tag + R"(", "draft": )" +
+         (draft ? "true" : "false") + R"(, "prerelease": )" +
+         (prerelease ? "true" : "false") +
+         R"(, "html_url": "https://github.com/Gluxur/guition-jc8012p4a1c-intercom/releases/tag/)" +
+         tag + R"(", "body": "notes )" + tag +
+         R"(", "assets": [{"name": "esp32_p4_webrtc_cam.bin", "browser_download_url": ")" +
+         asset_url + R"("}]})";
+}
+
+} // namespace
+
+TEST(GithubReleaseList, NewestEntryWinsEvenIfPrerelease) {
+  const std::string json = "[" + Entry("v2.4.0-beta.1", true, false, Url("v2.4.0-beta.1")) +
+                           "," + Entry("v2.3.0", false, false, Url("v2.3.0")) + "]";
+  github_release::Release r = {};
+  ASSERT_TRUE(github_release::parse_newest(json.c_str(), kRepo, kAsset, &r));
+  EXPECT_STREQ(r.tag, "v2.4.0-beta.1");
+  EXPECT_STREQ(r.asset_url, Url("v2.4.0-beta.1").c_str());
+  EXPECT_STREQ(r.notes, "notes v2.4.0-beta.1");
+}
+
+TEST(GithubReleaseList, StableNewerThanBetaIsOffered) {
+  const std::string json = "[" + Entry("v2.4.0", false, false, Url("v2.4.0")) + "," +
+                           Entry("v2.4.0-beta.2", true, false, Url("v2.4.0-beta.2")) + "]";
+  github_release::Release r = {};
+  ASSERT_TRUE(github_release::parse_newest(json.c_str(), kRepo, kAsset, &r));
+  EXPECT_STREQ(r.tag, "v2.4.0");
+}
+
+TEST(GithubReleaseList, SkipsDraftAndEntryWithoutValidAsset) {
+  const std::string json =
+      "[" + Entry("v2.5.0", false, true, Url("v2.5.0")) + "," +
+      Entry("v2.4.0-beta.3", true, false,
+            "https://github.com/evil/x/releases/download/v2.4.0-beta.3/esp32_p4_webrtc_cam.bin") +
+      "," + Entry("v2.4.0-beta.2", true, false, Url("v2.4.0-beta.2")) + "]";
+  github_release::Release r = {};
+  ASSERT_TRUE(github_release::parse_newest(json.c_str(), kRepo, kAsset, &r));
+  EXPECT_STREQ(r.tag, "v2.4.0-beta.2");
+}
+
+TEST(GithubReleaseList, RejectsEmptyOrNonArray) {
+  github_release::Release r = {};
+  EXPECT_FALSE(github_release::parse_newest("[]", kRepo, kAsset, &r));
+  EXPECT_FALSE(github_release::parse_newest(
+      Fixture("v2.1.0", "n", Url("v2.1.0")).c_str(), kRepo, kAsset, &r));
+  EXPECT_FALSE(github_release::parse_newest("not json", kRepo, kAsset, &r));
+  EXPECT_FALSE(github_release::parse_newest(nullptr, kRepo, kAsset, &r));
+}

@@ -220,6 +220,7 @@ inline constexpr Entry kStrings[] = {
     {S::kHaEntShowStats, "Overlay statistiques"},
     {S::kHaEntSdLog, "Journal carte SD"},
     {S::kHaEntFileServer, "Serveur de fichiers"},
+    {S::kHaEntBetaChannel, "Mises à jour bêta"},
     {S::kHaEntRing, "Sonner"},
     {S::kHaEntAckMissed, "Acquitter les appels manques"},
     {S::kHaEntReboot, "Redemarrer"},

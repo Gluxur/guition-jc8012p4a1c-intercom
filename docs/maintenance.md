@@ -66,6 +66,13 @@ How it works:
 - **Check.** The board asks `api.github.com` for
   `/repos/<cfg::kGithubRepo>/releases/latest`: each time HA connects to it,
   every 6 h, and on `homeassistant.update_entity`. Never during a call.
+- **Channel.** The *Beta updates* switch (configuration entity, off by
+  default) makes the check read `/releases?per_page=3` instead and offer the
+  newest published release, **pre-releases included** (GitHub leaves them out
+  of `/releases/latest`). A stable release newer than every beta is offered
+  too. Flipping the switch checks again right away. Switching back to stable
+  while a beta is installed offers nothing until a newer stable release
+  exists: HA does not propose a lower version.
 - **Version.** The offered version is the release tag (`v2.1.0`), which HA
   compares with the running one.
 - **Download.** Install streams the release asset `esp32_p4_webrtc_cam.bin`
@@ -87,7 +94,14 @@ releases.
 on the tag (the "Firmware build" artifact of the tag's run). Its embedded
 version is the tag, e.g. `v2.1.0`. After installing, HA then sees installed
 == latest and shows "up to date". An image built elsewhere (`v2.1.0-dirty`,
-a bare hash) would keep being offered after every install. Builds of your own that are not released go through the SD card or
+a bare hash) would keep being offered after every install.
+
+**Publishing a beta.** Tag `vX.Y.Z-beta.N` (on an integration branch that
+merges the feature branches to test together), then publish it with
+`gh release create vX.Y.Z-beta.N --prerelease` and the CI-built
+`esp32_p4_webrtc_cam.bin`. Only boards with *Beta updates* on see it. The
+feature branches still go to `main` through their own PRs; the integration
+branch is deleted once the stable tag is out. Builds of your own that are not released go through the SD card or
 the file server (above).
 
 There is no ESPHome dashboard "Install": the dashboard compiles a YAML with

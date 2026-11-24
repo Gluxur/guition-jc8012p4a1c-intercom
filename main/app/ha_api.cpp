@@ -97,6 +97,14 @@ void s_sdlog(bool on) {
   prefs::set_sd_log_enabled(on);
 }
 
+bool g_beta() { return prefs::beta_channel(); }
+// The offered version changes with the channel: check now rather than at the
+// next 6 h tick, so the update entity follows the switch.
+void s_beta(bool on) {
+  prefs::set_beta_channel(on);
+  ota_ctrl::request_check();
+}
+
 bool g_filesrv() { return file_server::running(); }
 void s_filesrv(bool on) {
   if (on) {
@@ -592,6 +600,13 @@ const Entity kEntities[] = {
      .set_text = s_calendar_id,
      .max_len = ha_entity_id::kMax - 1,
      .pattern = ha_entity_id::kCalendarPattern},
+    {.kind = Kind::kSwitch,
+     .object_id = "beta_channel",
+     .name = Str::kHaEntBetaChannel,
+     .icon = "mdi:flask-outline",
+     .category = Category::kConfig,
+     .get_bool = g_beta,
+     .set_bool = s_beta},
     // Pushed by ota_ctrl (changed sink in main.cpp) at each progress step and
     // after each check.
     {.kind = Kind::kUpdate,

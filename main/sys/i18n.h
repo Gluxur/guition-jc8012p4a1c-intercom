@@ -233,6 +233,7 @@ enum class Str : uint16_t {
   kHaEntShowStats,
   kHaEntSdLog,
   kHaEntFileServer,
+  kHaEntBetaChannel,
   kHaEntRing,
   kHaEntAckMissed,
   kHaEntReboot,

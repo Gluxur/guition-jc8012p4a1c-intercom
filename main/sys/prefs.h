@@ -72,6 +72,16 @@ void set_ring_file(const char *name);
 // Applique et persiste. Même contrat que set_dnd (effet immédiat).
 void set_sd_log_enabled(bool on);
 
+// Canal de mises à jour. Défaut : stable (/releases/latest, que GitHub calcule
+// sans les pre-releases). Bêta : la plus récente release publiée, pre-release
+// comprise. Lu par la tâche ota à chaque vérification, écrit depuis la tâche de
+// l'API (entité Home Assistant) : c'est l'appelant qui relance la vérification
+// (sys/ota_ctrl), pour que l'entité update change de version tout de suite.
+[[nodiscard]] bool beta_channel();
+
+// Applique et persiste. Même contrat que set_dnd (effet immédiat).
+void set_beta_channel(bool on);
+
 // Serveur de fichiers Wi-Fi. Défaut : éteint. Toute IO sur la carte ajoute de
 // la gigue au drain TCP du flux MJPEG ; un serveur permanent serait une porte
 // ouverte en permanence sur ce chemin. Lu au boot par app_main, écrit depuis la

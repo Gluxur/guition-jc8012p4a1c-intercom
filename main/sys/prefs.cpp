@@ -27,6 +27,7 @@ constexpr char kFileSrvKey[] = "filesrv";
 constexpr char kEchoKey[] = "echo";
 constexpr char kThemeKey[] = "theme";
 constexpr char kLangKey[] = "lang";
+constexpr char kBetaKey[] = "beta";
 // Indexées par HaEntity. <= 15 caractères (limite NVS).
 constexpr const char *kEntityKeys[] = {"ent_gate", "ent_weather", "ent_cal"};
 constexpr size_t kEntityCount = sizeof(kEntityKeys) / sizeof(kEntityKeys[0]);
@@ -51,6 +52,9 @@ std::atomic<bool> s_sd_log{true};
 // Écrit depuis la tâche LVGL (page Configuration) ET la tâche de l'API (entité
 // Home Assistant) : atomique, obligatoirement.
 std::atomic<bool> s_file_server{false};
+
+// Écrit par la tâche de l'API, lu par la tâche ota : atomique.
+std::atomic<bool> s_beta{false};
 
 // Écrit par la tâche LVGL, lu par mic_send au décroché : atomique.
 std::atomic<EchoCancel> s_echo{EchoCancel::kLowCost};
@@ -159,6 +163,9 @@ void init() {
   if (nvs_get_u8(handle, kFileSrvKey, &val) == ESP_OK) {
     s_file_server.store(val != 0);
   }
+  if (nvs_get_u8(handle, kBetaKey, &val) == ESP_OK) {
+    s_beta.store(val != 0);
+  }
   if (nvs_get_u8(handle, kEchoKey, &val) == ESP_OK &&
       val <= static_cast<uint8_t>(EchoCancel::kHighPerf)) {
     s_echo.store(static_cast<EchoCancel>(val));
@@ -186,7 +193,7 @@ void init() {
   ESP_LOGI(TAG,
            "ne pas déranger : %s | stats : %s | volume sonnerie : %u %% | "
            "journal SD : %s | sonnerie : %s | serveur fichiers : %s | "
-           "écho : %u | thème : %u | langue : %u",
+           "écho : %u | thème : %u | langue : %u | canal : %s",
            s_dnd.load() ? "actif" : "inactif",
            s_show_stats.load() ? "affichées" : "masquées",
            (unsigned)s_ring_volume.load(),
@@ -194,7 +201,7 @@ void init() {
            s_ring_file[0] ? s_ring_file : "(interne)",
            s_file_server.load() ? "actif" : "inactif",
            (unsigned)s_echo.load(), (unsigned)s_theme.load(),
-           (unsigned)s_lang.load());
+           (unsigned)s_lang.load(), s_beta.load() ? "bêta" : "stable");
 }
 
 bool dnd() { return s_dnd.load(); }
@@ -305,6 +312,20 @@ void set_sd_log_enabled(bool on) {
     return;
   }
   nvs_set_u8(handle, kSdLogKey, on ? 1 : 0);
+  nvs_commit(handle);
+  nvs_close(handle);
+}
+
+bool beta_channel() { return s_beta.load(); }
+
+void set_beta_channel(bool on) {
+  s_beta.store(on);
+  nvs_handle_t handle;
+  if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open %s en écriture : réglage non persisté", kNamespace);
+    return;
+  }
+  nvs_set_u8(handle, kBetaKey, on ? 1 : 0);
   nvs_commit(handle);
   nvs_close(handle);
 }
