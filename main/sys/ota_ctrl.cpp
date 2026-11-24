@@ -22,6 +22,7 @@
 #include "freertos/task.h"
 #include "sys/mutex.h"
 #include "sys/ota_image_check.h"
+#include "sys/prefs.h"
 #include "sys/sd_log.h"
 
 namespace ota_ctrl {
@@ -40,15 +41,22 @@ std::atomic<bool> s_check_pending{false};
 // Armé au premier request_check() : la vérification périodique n'a de sens
 // qu'une fois le Wi-Fi et HA là.
 std::atomic<bool> s_check_enabled{false};
-// Réponse de l'API GitHub : une release avec ses notes tient en quelques Ko.
-constexpr size_t kApiBufBytes = 32 * 1024;
+// Réponse de l'API GitHub, mesurée le 2026-11-24 : /releases/latest 8,2 Ko,
+// /releases?per_page=5 42,6 Ko (auteur, 4 assets et leurs uploaders par
+// release). En PSRAM, alloué le temps d'une vérification.
+constexpr size_t kApiBufBytes = 64 * 1024;
+// 3 et non 5 : ~26 Ko au lieu de 43, la marge absorbe des notes plus longues.
+// Suffit à retrouver une release installable derrière une pre-release publiée
+// sans son asset.
+constexpr int kBetaListLen = 3;
 // En secondes × configTICK_RATE_HZ, pas pdMS_TO_TICKS : ce dernier multiplie
 // en TickType_t 32 bits, et 21,6 M ms × 1000 Hz déborde.
 constexpr TickType_t kCheckPeriod = (TickType_t)(6 * 3600) * configTICK_RATE_HZ;
 // Sous s_status_mtx, comme le statut : c'est le même lecteur (tâche API).
 github_release::Release s_latest = {};
 bool s_latest_known = false;
-char s_api_url[160] = {};
+char s_api_url[160] = {};      // canal stable : /releases/latest
+char s_api_list_url[176] = {}; // canal bêta : /releases?per_page=N
 std::atomic<int> s_progress{-1};
 
 char s_url[256] = {0};
@@ -124,12 +132,15 @@ struct HttpCloser {
   }
 };
 
-// GET /repos/<repo>/releases/latest, certificat vérifié (bundle de l'IDF).
+// GET /repos/<repo>/releases/latest (stable) ou /releases (bêta), certificat
+// vérifié (bundle de l'IDF). Le canal est relu à chaque appel : le basculer
+// depuis HA vaut dès la vérification suivante, sans redémarrage.
 // Renvoie false sur erreur réseau ou réponse inattendue : le dernier résultat
 // connu est alors gardé.
 bool do_check() {
+  const bool beta = prefs::beta_channel();
   esp_http_client_config_t http = {};
-  http.url = s_api_url;
+  http.url = beta ? s_api_list_url : s_api_url;
   http.timeout_ms = 10000;
   http.crt_bundle_attach = esp_crt_bundle_attach;
   http.user_agent = cfg::kHttpUserAgent;
@@ -183,13 +194,18 @@ bool do_check() {
   }
   buf.get()[got] = '\0';
   github_release::Release rel = {};
-  if (!github_release::parse_latest(buf.get(), cfg::kGithubRepo,
-                                    cfg::kGithubAsset, &rel)) {
+  const bool parsed =
+      beta ? github_release::parse_newest(buf.get(), cfg::kGithubRepo,
+                                          cfg::kGithubAsset, &rel)
+           : github_release::parse_latest(buf.get(), cfg::kGithubRepo,
+                                          cfg::kGithubAsset, &rel);
+  if (!parsed) {
     ESP_LOGW(TAG, "check: release sans asset %s valide", cfg::kGithubAsset);
     store_latest(github_release::Release{});
     return true;
   }
-  ESP_LOGI(TAG, "check: dernière release %s", rel.tag);
+  ESP_LOGI(TAG, "check (%s): dernière release %s", beta ? "bêta" : "stable",
+           rel.tag);
   store_latest(rel);
   return true;
 }
@@ -425,6 +441,9 @@ void init(bool (*is_busy)(), void (*report_fn)(const char *msg),
   // Avant la tâche : elle publie un statut dès son premier réveil.
   snprintf(s_api_url, sizeof s_api_url,
            "https://api.github.com/repos/%s/releases/latest", cfg::kGithubRepo);
+  snprintf(s_api_list_url, sizeof s_api_list_url,
+           "https://api.github.com/repos/%s/releases?per_page=%d",
+           cfg::kGithubRepo, kBetaListLen);
   s_status_mtx = xSemaphoreCreateMutex();
   if (s_status_mtx == nullptr) {
     ESP_LOGE(TAG, "mutex de statut OTA non créé : lecture non protégée");

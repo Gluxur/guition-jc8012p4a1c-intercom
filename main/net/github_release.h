@@ -1,6 +1,7 @@
 #pragma once
 
-// Decoding of GET /repos/{owner}/{repo}/releases/latest (GitHub REST API).
+// Decoding of GET /repos/{owner}/{repo}/releases/latest and /releases (GitHub
+// REST API).
 // Pure: cJSON only, host-tested (test/test_github_release). The HTTP side
 // lives in sys/ota_ctrl.
 namespace github_release {
@@ -19,6 +20,14 @@ struct Release {
 // (another repository, another host, plain http) is refused. `out` is only
 // meaningful on true.
 [[nodiscard]] bool parse_latest(const char *json, const char *repo,
+                                const char *asset, Release *out);
+
+// Beta channel. `json` is the array of GET /releases (newest first, pre-releases
+// included, unlike /releases/latest which skips them). Picks the first entry
+// that is not a draft and passes the same checks as parse_latest; entries that
+// fail them are skipped, not fatal. A stable release newer than every beta is
+// therefore offered too: the beta channel never stays behind stable.
+[[nodiscard]] bool parse_newest(const char *json, const char *repo,
                                 const char *asset, Release *out);
 
 } // namespace github_release
