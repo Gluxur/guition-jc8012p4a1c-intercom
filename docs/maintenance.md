@@ -104,6 +104,22 @@ feature branches still go to `main` through their own PRs; the integration
 branch is deleted once the stable tag is out. Builds of your own that are not released go through the SD card or
 the file server (above).
 
+### Screenshots for the documentation
+
+Two diagnostic buttons in Home Assistant write the screen to the SD card as
+BMP (1280×800, RGB565, ~2 MB each) under `/sdcard/shots/`:
+
+- **Capture d'ecran (SD)** / *Screenshot (SD)*: the page on screen, as
+  `<fr|en>_<page>.bmp`.
+- **Captures de toutes les pages (SD)** / *Screenshots of every page (SD)*:
+  opens home, weather, calendar, calls and settings in turn (~3 s each),
+  captures each, then goes back home.
+
+Each run overwrites the previous files. For the other language: switch the
+language, restart, press again. Refused during a call (the video owns the
+screen) and in USB mode. Copy the files with the file server or USB mode, then
+convert for GitHub, e.g. `magick fr_accueil.bmp docs/img/fr_accueil.png`.
+
 There is no ESPHome dashboard "Install": the dashboard compiles a YAML with
 its own ESP-IDF, which cannot produce this firmware, and the ESPHome OTA
 protocol (port 3232) is not implemented.

@@ -17,6 +17,7 @@
 #include "app/ha_api.h"
 #include "app/mic_session.h"
 #include "app/presence.h"
+#include "app/screenshot.h"
 #include "app/video_mjpeg.h"
 #include "media/g711.h"
 #include "media/ringtone.h"
@@ -431,6 +432,11 @@ extern "C" void app_main(void) {
   // l'init du CSI ou du capteur doit encore pouvoir revenir en arrière. Après
   // ha_api : le premier changement d'état y est publié directement.
   presence::init({[] { ha_api::publish_now("presence"); }});
+
+  // Captures d'écran : la tâche ne fait qu'attendre une requête HA, qui ne
+  // peut arriver qu'après la connexion de HA, donc écrans créés depuis
+  // longtemps. Aucun ordre à respecter au-delà d'« après ha_api ».
+  screenshot::init();
 
   // Point de validation "boot sain" = WiFi (déjà connecté) + Home Assistant
   // connecté à l'API. Attente bornée (~60 s : HA se reconnecte sur l'annonce

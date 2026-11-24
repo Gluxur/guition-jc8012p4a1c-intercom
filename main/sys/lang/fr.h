@@ -227,6 +227,8 @@ inline constexpr Entry kStrings[] = {
     {S::kHaEntOtaSd, "Mettre a jour depuis la carte SD"},
     {S::kHaEntPresenceSnapshot, "Cliche camera de presence (SD)"},
     {S::kHaEntPresenceCaptures, "Cliche a chaque detection (SD)"},
+    {S::kHaEntScreenshot, "Capture d'ecran (SD)"},
+    {S::kHaEntScreenshotsAll, "Captures de toutes les pages (SD)"},
     {S::kHaEntRssi, "RSSI Wi-Fi"},
     {S::kHaEntIp, "Adresse IP"},
     {S::kHaEntUptime, "Duree de fonctionnement"},

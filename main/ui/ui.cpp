@@ -422,11 +422,9 @@ void open_page_async(void *arg) {
 } // namespace
 
 bool open_page(const char *name) {
-  static constexpr const char *kPages[] = {"accueil", "meteo", "agenda",
-                                           "appels", "configuration"};
   intptr_t idx = -1;
-  for (intptr_t i = 0; i < static_cast<intptr_t>(std::size(kPages)); i++) {
-    if (strcmp(name, kPages[i]) == 0) {
+  for (intptr_t i = 0; i < static_cast<intptr_t>(std::size(kPageNames)); i++) {
+    if (strcmp(name, kPageNames[i]) == 0) {
       idx = i;
     }
   }

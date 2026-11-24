@@ -240,6 +240,8 @@ enum class Str : uint16_t {
   kHaEntOtaSd,
   kHaEntPresenceSnapshot,
   kHaEntPresenceCaptures,
+  kHaEntScreenshot,
+  kHaEntScreenshotsAll,
   kHaEntRssi,
   kHaEntIp,
   kHaEntUptime,

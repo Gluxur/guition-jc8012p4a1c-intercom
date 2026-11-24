@@ -123,6 +123,9 @@ inline constexpr const char *kPresenceSnapshot = "/sdcard/presence.pgm";
 // ancienne cède la place.
 inline constexpr const char *kPresenceDir = "/sdcard/presence";
 inline constexpr int kPresenceKeep = 100;
+// Captures d'écran pour la documentation (app/screenshot), écrasées à chaque
+// tour : <langue>_<page>.bmp, ~2 Mo chacune.
+inline constexpr const char *kScreenshotDir = "/sdcard/shots";
 // Ring PSRAM : doit absorber la rafale de logs du boot, produite avant que
 // l'heure SNTP soit connue et donc avant l'ouverture du fichier daté.
 inline constexpr int kRingBytes = 32768;

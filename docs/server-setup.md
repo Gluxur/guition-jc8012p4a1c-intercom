@@ -103,7 +103,7 @@ exact IDs. Among them:
 - `text` Entité portail / météo / agenda (the HA entity ids the board uses,
   see below),
 - `button` reboot, OTA from SD card, acknowledge missed calls,
-  presence snapshot,
+  presence snapshot, screenshot, screenshots of every page,
 - `sensor` RSSI, uptime, CPU per core, PSRAM, internal SRAM, SD free space,
   missed calls; `text_sensor` IP, firmware version, OTA status,
 - `binary_sensor` Appel en cours (in call), Présence devant l'écran (presence).

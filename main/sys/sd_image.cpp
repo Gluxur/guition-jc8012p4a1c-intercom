@@ -12,6 +12,7 @@
 #include "bsp.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "sys/bmp_header.h"
 #include "sys/usb_msc.h"
 
 namespace sd_image {
@@ -56,6 +57,37 @@ bool write_pgm(const char *path, const uint8_t *gray, int w, int h,
   bool ok = n > 0 && n < static_cast<int>(sizeof hdr) &&
             write(fd, hdr, n) == n;
   ok = ok && write(fd, gray, px) == static_cast<ssize_t>(px);
+  close(fd);
+  if (!ok) {
+    ESP_LOGE(TAG, "écriture %s : échec", path);
+  }
+  return ok;
+}
+
+bool write_bmp565(const char *path, const uint8_t *px, int w, int h,
+                  size_t stride) {
+  if (path == nullptr || px == nullptr || w <= 0 || h <= 0 ||
+      stride < static_cast<size_t>(w) * 2) {
+    return false;
+  }
+  const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    ESP_LOGE(TAG, "ouverture %s impossible (errno %d)", path, errno);
+    return false;
+  }
+  uint8_t hdr[bmp::kRgb565HeaderBytes];
+  bmp::rgb565_header(hdr, w, h);
+  bool ok = write(fd, hdr, sizeof hdr) == static_cast<ssize_t>(sizeof hdr);
+  const size_t data = static_cast<size_t>(w) * 2;
+  const size_t pad = bmp::rgb565_row_bytes(w) - data;
+  static constexpr uint8_t kZeros[4] = {};
+  for (int y = 0; ok && y < h; y++) {
+    ok = write(fd, px + static_cast<size_t>(y) * stride, data) ==
+         static_cast<ssize_t>(data);
+    if (ok && pad != 0) {
+      ok = write(fd, kZeros, pad) == static_cast<ssize_t>(pad);
+    }
+  }
   close(fd);
   if (!ok) {
     ESP_LOGE(TAG, "écriture %s : échec", path);

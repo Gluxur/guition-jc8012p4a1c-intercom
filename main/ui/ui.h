@@ -79,6 +79,11 @@ void load_home_screen();
  * indisponible. */
 [[nodiscard]] bool open_page(const char *name);
 
+/* Les noms acceptés par open_page, dans l'ordre des pages (app/screenshot en
+ * fait le tour). */
+inline constexpr const char *kPageNames[] = {"accueil", "meteo", "agenda",
+                                             "appels", "configuration"};
+
 /* Nom de la page affichée (mêmes noms), sinon « autre » — caméra, debug,
  * ou mutex LVGL non obtenu en 200 ms. Home Assistant refuse un état de select
  * hors de ses options : d'où un seul nom de repli, déclaré comme option. */
