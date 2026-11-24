@@ -28,6 +28,7 @@ constexpr char kEchoKey[] = "echo";
 constexpr char kThemeKey[] = "theme";
 constexpr char kLangKey[] = "lang";
 constexpr char kBetaKey[] = "beta";
+constexpr char kPresCapKey[] = "pres_cap";
 // Indexées par HaEntity. <= 15 caractères (limite NVS).
 constexpr const char *kEntityKeys[] = {"ent_gate", "ent_weather", "ent_cal"};
 constexpr size_t kEntityCount = sizeof(kEntityKeys) / sizeof(kEntityKeys[0]);
@@ -55,6 +56,9 @@ std::atomic<bool> s_file_server{false};
 
 // Écrit par la tâche de l'API, lu par la tâche ota : atomique.
 std::atomic<bool> s_beta{false};
+
+// Écrit par la tâche de l'API, lu par la tâche presence : atomique.
+std::atomic<bool> s_pres_cap{false};
 
 // Écrit par la tâche LVGL, lu par mic_send au décroché : atomique.
 std::atomic<EchoCancel> s_echo{EchoCancel::kLowCost};
@@ -165,6 +169,9 @@ void init() {
   }
   if (nvs_get_u8(handle, kBetaKey, &val) == ESP_OK) {
     s_beta.store(val != 0);
+  }
+  if (nvs_get_u8(handle, kPresCapKey, &val) == ESP_OK) {
+    s_pres_cap.store(val != 0);
   }
   if (nvs_get_u8(handle, kEchoKey, &val) == ESP_OK &&
       val <= static_cast<uint8_t>(EchoCancel::kHighPerf)) {
@@ -326,6 +333,20 @@ void set_beta_channel(bool on) {
     return;
   }
   nvs_set_u8(handle, kBetaKey, on ? 1 : 0);
+  nvs_commit(handle);
+  nvs_close(handle);
+}
+
+bool presence_captures() { return s_pres_cap.load(); }
+
+void set_presence_captures(bool on) {
+  s_pres_cap.store(on);
+  nvs_handle_t handle;
+  if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open %s en écriture : réglage non persisté", kNamespace);
+    return;
+  }
+  nvs_set_u8(handle, kPresCapKey, on ? 1 : 0);
   nvs_commit(handle);
   nvs_close(handle);
 }

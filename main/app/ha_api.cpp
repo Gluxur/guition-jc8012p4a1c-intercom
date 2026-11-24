@@ -105,6 +105,9 @@ void s_beta(bool on) {
   ota_ctrl::request_check();
 }
 
+bool g_pres_cap() { return prefs::presence_captures(); }
+void s_pres_cap(bool on) { prefs::set_presence_captures(on); }
+
 bool g_filesrv() { return file_server::running(); }
 void s_filesrv(bool on) {
   if (on) {
@@ -506,6 +509,13 @@ const Entity kEntities[] = {
      .icon = "mdi:camera",
      .category = Category::kDiagnostic,
      .press = p_presence_snapshot},
+    {.kind = Kind::kSwitch,
+     .object_id = "presence_captures",
+     .name = Str::kHaEntPresenceCaptures,
+     .icon = "mdi:camera-burst",
+     .category = Category::kConfig,
+     .get_bool = g_pres_cap,
+     .set_bool = s_pres_cap},
 
     // --- Sensors -----------------------------------------------------------
     {.kind = Kind::kSensor,

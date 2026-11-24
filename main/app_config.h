@@ -118,6 +118,11 @@ inline constexpr const char *kMountPoint = "/sdcard";
 inline constexpr const char *kLogDir = "/sdcard/log";
 // Vignette de diagnostic de la caméra de présence (presence::request_snapshot).
 inline constexpr const char *kPresenceSnapshot = "/sdcard/presence.pgm";
+// Clichés pris à chaque passage absent -> présent (prefs::presence_captures).
+// 100 vignettes de 57 Ko = 5,7 Mo : quelques jours de passages, la plus
+// ancienne cède la place.
+inline constexpr const char *kPresenceDir = "/sdcard/presence";
+inline constexpr int kPresenceKeep = 100;
 // Ring PSRAM : doit absorber la rafale de logs du boot, produite avant que
 // l'heure SNTP soit connue et donc avant l'ouverture du fichier daté.
 inline constexpr int kRingBytes = 32768;

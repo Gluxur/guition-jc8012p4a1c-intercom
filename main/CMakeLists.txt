@@ -57,6 +57,7 @@ idf_component_register(
          "sys/ota_ctrl.cpp"
          "sys/ota_image_check.cpp"
          "sys/prefs.cpp"
+         "sys/sd_image.cpp"
          "sys/sd_log.cpp"
          "sys/settings.cpp"
          "sys/sys_stats.cpp"

@@ -97,7 +97,8 @@ exact IDs. Among them:
   next restart (press the reboot button),
 - `number` ring / speaker volume, mic gain,
 - `switch` Caméra sans sonnerie (open the camera without ringing),
-  `switch` SD log, file server, stats overlay,
+  `switch` SD log, file server, stats overlay, beta updates, snapshot on
+  each detection,
 - `update` Firmware (Settings → Updates, image served by HA),
 - `text` Entité portail / météo / agenda (the HA entity ids the board uses,
   see below),
@@ -178,6 +179,15 @@ automation:
 
 During a call presence is forced to "present", so the screen never goes dark
 while someone rings.
+
+**False detections.** Turn on **Cliche a chaque detection (SD)** / *Snapshot
+on each detection (SD)*: at each absent → present change, the board writes a
+320×180 grey thumbnail to `/sdcard/presence/<YYYYMMDD-HHMMSS>.pgm`, with a
+white frame around the cells that moved. The PGM header comment holds the
+numbers behind the decision (`changed`, `max_delta`, exposure). The 100 most
+recent are kept. Read them through the file server or USB mode; any image
+viewer opens PGM (GIMP, IrfanView, `magick x.pgm x.png`). Images never leave
+the SD card.
 
 ### Entity ids: gate, weather, calendar
 
