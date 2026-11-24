@@ -41,21 +41,65 @@ const char *lang_code() {
   return i18n::lang() == i18n::Lang::kEn ? "en" : "fr";
 }
 
-// lv_snapshot_take rend l'écran entier dans un tampon neuf (2 Mo PSRAM, via
-// l'allocateur LVGL) : verrou LVGL le temps du rendu seulement, l'écriture SD
-// (~2 Mo, plusieurs secondes) se fait sans le verrou pour ne pas figer l'UI.
-bool capture(const char *page) {
-  lv_draw_buf_t *snap = nullptr;
+// Rendu de la capture DANS lvgl_task, jamais ici : avec LV_OS_NONE,
+// lv_snapshot_take redessine tout l'arbre d'objets dans la tâche appelante, et
+// les icônes Lottie de la page météo passent par ThorVG, dont rleRender() pose
+// à lui seul 16 Ko sur la pile (cf. main.cpp, pile de lvgl_task portée à
+// 48 Ko pour cette raison). En v2.4.0-beta.1 le rendu se faisait dans cette
+// tâche (8 Ko) : la capture de la page météo, et elle seule, redémarrait la
+// tablette — cause déduite de ce qui précède, trace de panic non relevée.
+//
+// s_snap_waiting arbitre l'abandon : celui qui le remet à false le premier
+// (le rappel qui livre, ou l'attente qui expire) décide du sort du tampon.
+std::atomic<lv_draw_buf_t *> s_snap{nullptr};
+std::atomic<bool> s_snap_waiting{false};
+SemaphoreHandle_t s_snap_done = nullptr;
+// Borne de sécurité, pas une mesure : au-delà, la tâche LVGL est bloquée
+// ailleurs et on abandonne cette page plutôt que d'attendre indéfiniment.
+constexpr uint32_t kSnapTimeoutMs = 5000;
+
+// Exécuté par lvgl_task (lv_async_call), mutex LVGL tenu par sa boucle.
+void snap_async(void *) {
+  lv_draw_buf_t *b =
+      lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
+  if (!s_snap_waiting.exchange(false)) {
+    if (b != nullptr) {
+      lv_draw_buf_destroy(b); // l'attente a expiré : personne ne le lira
+    }
+    return;
+  }
+  s_snap.store(b);
+  xSemaphoreGive(s_snap_done);
+}
+
+lv_draw_buf_t *take_snapshot() {
+  s_snap.store(nullptr);
+  s_snap_waiting.store(true);
   {
     bsp::Bsp::LvglLock lock(1000);
-    if (!lock.held()) {
-      ESP_LOGW(TAG, "%s : verrou LVGL indisponible", page);
-      return false;
+    if (!lock.held() ||
+        lv_async_call(snap_async, nullptr) != LV_RESULT_OK) {
+      s_snap_waiting.store(false);
+      return nullptr;
     }
-    snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
   }
+  if (xSemaphoreTake(s_snap_done, pdMS_TO_TICKS(kSnapTimeoutMs)) == pdTRUE) {
+    return s_snap.load();
+  }
+  if (!s_snap_waiting.exchange(false)) {
+    // Le rappel a livré entre l'expiration et cette ligne : le prendre.
+    xSemaphoreTake(s_snap_done, portMAX_DELAY);
+    return s_snap.load();
+  }
+  return nullptr; // le rappel, s'il passe un jour, libérera son tampon
+}
+
+// L'écriture SD (~2 Mo, plusieurs secondes) se fait ici, sans le verrou LVGL,
+// pour ne pas figer l'UI.
+bool capture(const char *page) {
+  lv_draw_buf_t *snap = take_snapshot();
   if (snap == nullptr) {
-    ESP_LOGE(TAG, "%s : snapshot impossible (PSRAM ?)", page);
+    ESP_LOGE(TAG, "%s : snapshot impossible (PSRAM ou tâche LVGL)", page);
     return false;
   }
   char path[64];
@@ -128,7 +172,8 @@ void post(Req r) {
 
 void init() {
   s_wake = xSemaphoreCreateBinary();
-  if (s_wake == nullptr) {
+  s_snap_done = xSemaphoreCreateBinary();
+  if (s_wake == nullptr || s_snap_done == nullptr) {
     ESP_LOGE(TAG, "sémaphore non créé : captures indisponibles");
     return;
   }
