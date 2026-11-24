@@ -1,7 +1,11 @@
 name: Host unit tests
 
 on:
+  # main is only reached through a PR: pushes to other branches would run
+  # the same jobs twice (push + pull_request). Tags still build releases.
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
