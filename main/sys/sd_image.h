@@ -19,6 +19,12 @@ namespace sd_image {
 [[nodiscard]] bool write_pgm(const char *path, const uint8_t *gray, int w,
                              int h, const char *comment);
 
+// BMP RGB565 (sys/bmp_header) depuis un tampon LVGL : `stride` octets par
+// ligne dans `px`. Écrit ligne par ligne, chaque write() <= une ligne d'écran
+// (2,5 Ko) : borne la rafale sur le contrôleur SDMMC partagé avec le Wi-Fi.
+[[nodiscard]] bool write_bmp565(const char *path, const uint8_t *px, int w,
+                                int h, size_t stride);
+
 // Crée `dir` s'il manque, puis supprime les plus anciens fichiers `*<ext>` pour
 // n'en garder que `keep - 1` : la place du fichier que l'appelant va écrire.
 // « Plus ancien » = plus petit nom : les noms doivent trier dans l'ordre

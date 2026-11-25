@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_peer.h"
 #include "esp_peer_default.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -12,8 +13,10 @@
 #include "app/call_history.h"
 #include "media/aec.h"
 #include "media/g711.h"
+#include "media/half_duplex.h"
 #include "media/ringtone.h"
 #include "net/signaling.h"
+#include "sys/crumb.h"
 #include "sys/prefs.h"
 
 #include <atomic>
@@ -63,12 +66,27 @@ std::atomic<uint8_t> s_conn{0};
 std::atomic<bool> s_sdp_answer{false};
 std::atomic<uint8_t> s_peak{0}; // crête PCM normalisée 0-100
 
+// Semi-duplex : lus et écrits par la seule tâche mic_send (start/stop_echo_
+// cancel y sont appelés), donc sans atomique.
+bool s_half_duplex = false;
+half_duplex::Ducker s_ducker;
+uint32_t s_frames = 0;
+uint32_t s_duck_frames = 0;
+
 // Arme l'annulation d'écho selon le réglage. Tout échec laisse le micro marcher
 // sans AEC : un visiteur qui s'entend vaut mieux qu'un visiteur qu'on n'entend
 // pas répondre.
 void start_echo_cancel() {
   const prefs::EchoCancel mode = prefs::echo_cancel();
   if (mode == prefs::EchoCancel::kOff) {
+    return;
+  }
+  if (mode == prefs::EchoCancel::kHalfDuplex) {
+    // Ni esp-sr ni référence stéréo : le niveau du HP vient d'aud_render.
+    s_ducker.reset();
+    s_duck_frames = s_frames = 0;
+    s_half_duplex = true;
+    ESP_LOGI(TAG, "décroché : semi-duplex actif");
     return;
   }
   ESP_LOGI(TAG, "décroché : AEC demandé (mode %u), SRAM interne libre %u o",
@@ -90,7 +108,16 @@ void start_echo_cancel() {
 }
 
 void stop_echo_cancel() {
+  if (s_half_duplex) {
+    s_half_duplex = false;
+    // Une ligne par appel : c'est ce qui permet de régler kFarThreshold. Près
+    // de 100 % = seuil sous le souffle de la platine, micro toujours baissé.
+    ESP_LOGI(TAG, "semi-duplex : micro baissé %u %% des trames (%u/%u)",
+             s_frames ? (unsigned)(s_duck_frames * 100 / s_frames) : 0u,
+             (unsigned)s_duck_frames, (unsigned)s_frames);
+  }
   if (aec::active()) {
+    crumb::mark(crumb::Id::kAecStop);
     aec::stop();
     bsp::Bsp::instance().set_mic_reference(false);
   }
@@ -120,9 +147,11 @@ void send_task(void *arg) {
       start_echo_cancel();
     }
     bsp::Bsp &bsp_inst = bsp::Bsp::instance();
+    crumb::mark(crumb::Id::kMicReadBegin, aec::active() ? 1 : 0);
     esp_err_t err = aec::active()
                         ? bsp_inst.read_pcm_ref(pcm_buf, ref_buf, kFrameSamples)
                         : bsp_inst.read_pcm(pcm_buf, kFrameSamples);
+    crumb::mark(crumb::Id::kMicReadEnd, static_cast<uint32_t>(err));
     if (err != ESP_OK) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
@@ -131,8 +160,16 @@ void send_task(void *arg) {
     // 20 ms (horloge du codec), sans elle la boucle tournerait à vide.
     if (s_muted.load(std::memory_order_relaxed)) {
       memset(pcm_buf, 0, sizeof(pcm_buf));
+    } else if (s_half_duplex) {
+      const bool duck = half_duplex::far_speaking(
+          static_cast<uint32_t>(esp_timer_get_time() / 1000));
+      s_ducker.apply(pcm_buf, kFrameSamples, duck);
+      s_frames++;
+      s_duck_frames += duck ? 1 : 0;
     } else if (aec::active()) {
+      crumb::mark(crumb::Id::kAecBegin);
       aec::process(pcm_buf, ref_buf, pcm_buf, kFrameSamples); // en place
+      crumb::mark(crumb::Id::kAecEnd);
     }
 
     // Tonalité de test (page Micro/Debug) mixée par-dessus la capture, avant
@@ -161,7 +198,9 @@ void send_task(void *arg) {
     frame.data = alaw_buf;
     frame.size = kFrameSamples;
     if (s_peer != nullptr) {
+      crumb::mark(crumb::Id::kMicSendBegin);
       esp_peer_send_audio(s_peer, &frame);
+      crumb::mark(crumb::Id::kMicSendEnd);
     }
     pts += 20; // 20ms par frame
 
@@ -175,7 +214,7 @@ void send_task(void *arg) {
   stop_echo_cancel();
   xSemaphoreGive(s_send_task_stopped);
   // Pile allouée via xTaskCreateWithCaps : vTaskDelete(NULL) fuirait le bloc
-  // PSRAM (tâche "statique" pour FreeRTOS, l'idle ne libère rien).
+  // (tâche "statique" pour FreeRTOS, l'idle ne libère rien).
   vTaskDeleteWithCaps(nullptr);
 }
 
@@ -350,9 +389,16 @@ void start_blocking() {
   // Épinglée cœur 1 : l'AEC y coûte jusqu'à ~40 % d'un cœur en session (mesuré
   // de nuit), et le cœur 0 est réservé au drain TCP du MJPEG, facteur limitant
   // du débit vidéo. 8 Ko et non 4 : aec_process s'exécute sur cette pile.
+  // Pile en SRAM interne depuis v2.4.0-beta.6. En PSRAM, la tablette se figeait
+  // en appel décroché AEC actif (reset=WDT, sans panic : les deux cœurs
+  // bloqués), même avec les données de l'AEC en interne (beta.5), et jamais
+  // sans AEC. esp-sr fait ses accès vectoriels sur cette pile, et le contexte
+  // FPU/PIE y est sauvegardé à chaque commutation. Hypothèse en test, pas une
+  // preuve : les marqueurs crumb mic_read/mic_send diront où en était le cœur 1.
   if (xTaskCreatePinnedToCoreWithCaps(send_task, "mic_send", 8192, nullptr, 4,
                                       &s_send_task, 1,
-                                      MALLOC_CAP_SPIRAM) != pdPASS) {
+                                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) !=
+      pdPASS) {
     ESP_LOGE(TAG, "start: failed to create mic_send_task");
     // Démontage direct et non stop() : on tient déjà le jeton de transition,
     // stop() le verrait pris et ne ferait rien.
@@ -380,6 +426,7 @@ void teardown() {
     }
     s_send_task = nullptr;
   }
+  crumb::mark(crumb::Id::kMicSendJoined, send_joined ? 1 : 0);
   // 6 s et non 1 : mic_peer_loop peut être DANS signaling::exchange(), un POST
   // HTTP bloquant borné à 4 s (timeout_ms de net/signaling.cpp) + connexion.
   // C'est le cas dès qu'on raccroche pendant l'ouverture du micro — devenu
@@ -397,12 +444,14 @@ void teardown() {
   // sémaphore purgé au prochain start() absorbera le give tardif.
   if (s_peer != nullptr) {
     if (send_joined && peer_joined) {
+      crumb::mark(crumb::Id::kMicPeerClose);
       esp_peer_close(s_peer);
     } else {
       ESP_LOGE(TAG, "stop: tâches non sorties, peer abandonné (fuite assumée)");
     }
     s_peer = nullptr;
   }
+  crumb::mark(crumb::Id::kMicTeardownEnd);
   ESP_LOGI(TAG, "stop: stopped");
 }
 
@@ -516,6 +565,7 @@ void stop() {
     ringtone::mic_tone_stop();
     return;
   }
+  crumb::mark(crumb::Id::kMicStop);
   s_conn.store(0); // Idle
   s_sdp_answer.store(false);
   s_peak.store(0);

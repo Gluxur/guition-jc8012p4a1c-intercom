@@ -122,6 +122,13 @@ the go2rtc stream.
   it already holds ~180 ms of audio and returns in ~70 µs.
 - Echo cancellation: only esp-sr **FD** modes are usable (FD_HIGH_PERF ~38 % of
   core 1 during a call); VOIP modes cost 60-450 % of a core on this silicon.
+  With either FD mode active, answered calls froze the tablet (`reset=WDT`, no
+  panic, 2026-11-25), even with the AEC state in internal SRAM. The default
+  is now **half duplex** (`media/half_duplex`): the mic is lowered by 20 dB
+  while the speaker plays the visitor's voice. It uses no esp-sr and no stereo
+  I2S reference, and its CPU cost is negligible. The trade-off is that both
+  sides cannot talk at once. The `semi-duplex: micro baissé X %` log line at
+  each hang-up is used to tune `kFarThreshold`.
 - Ringtone WAVs must be near **−1 dBFS**: the firmware never normalises.
 
 ## microSD, USB and the SDMMC controller

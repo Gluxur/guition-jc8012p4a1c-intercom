@@ -18,6 +18,7 @@
 #include "app/gate.h"
 #include "app/ha_entity_id.h"
 #include "app/presence.h"
+#include "app/screenshot.h"
 #include "app_config.h"
 #include "bsp.h"
 #include "media/ringtone.h"
@@ -176,7 +177,7 @@ void s_mic_gain(float f) {
 // Labels in prefs::EchoCancel order: the index IS the setting, as in the
 // dropdown of the Settings page.
 const Str kEchoLabels[] = {Str::kHaEchoOff, Str::kHaEchoLowCost,
-                           Str::kHaEchoHighPerf};
+                           Str::kHaEchoHighPerf, Str::kHaEchoHalfDuplex};
 
 // The list HA was given (esphome_api translates it the same way).
 const char *echo_label(size_t i) { return i18n::t(kEchoLabels[i]); }
@@ -257,6 +258,9 @@ void p_ack_missed() {
 }
 
 void p_presence_snapshot() { presence::request_snapshot(); }
+
+void p_screenshot() { screenshot::request_current(); }
+void p_screenshots_all() { screenshot::request_all(); }
 
 void p_ota_sd() { ota_ctrl::request_file(cfg::kOtaSdDefaultPath); }
 
@@ -509,6 +513,18 @@ const Entity kEntities[] = {
      .icon = "mdi:camera",
      .category = Category::kDiagnostic,
      .press = p_presence_snapshot},
+    {.kind = Kind::kButton,
+     .object_id = "screenshot",
+     .name = Str::kHaEntScreenshot,
+     .icon = "mdi:monitor-screenshot",
+     .category = Category::kDiagnostic,
+     .press = p_screenshot},
+    {.kind = Kind::kButton,
+     .object_id = "screenshots_all",
+     .name = Str::kHaEntScreenshotsAll,
+     .icon = "mdi:monitor-multiple",
+     .category = Category::kDiagnostic,
+     .press = p_screenshots_all},
     {.kind = Kind::kSwitch,
      .object_id = "presence_captures",
      .name = Str::kHaEntPresenceCaptures,

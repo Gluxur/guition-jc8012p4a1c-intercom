@@ -472,7 +472,7 @@ void cb_ring_file(lv_event_t *e) {
 void cb_echo(lv_event_t *e) {
   lv_obj_t *dd = static_cast<lv_obj_t *>(lv_event_get_target(e));
   const uint32_t sel = lv_dropdown_get_selected(dd);
-  if (sel > static_cast<uint32_t>(prefs::EchoCancel::kHighPerf)) {
+  if (sel > static_cast<uint32_t>(prefs::EchoCancel::kHalfDuplex)) {
     return;
   }
   prefs::set_echo_cancel(static_cast<prefs::EchoCancel>(sel));

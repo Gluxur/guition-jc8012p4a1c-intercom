@@ -82,6 +82,10 @@ bool start(bool high_perf) {
   // mesurés), pile dans la réserve dont le SDIO d'esp_hosted et lwip ont besoin
   // pendant un appel. La bibliothèque ne documente pas ce qu'elle garde quand
   // même en interne : le delta est journalisé ci-dessous.
+  // Essayé en v2.4.0-beta.5 : tout en SRAM interne, contre les gels en appel
+  // décroché (reset=WDT). Coût mesuré 103 Ko d'interne au lieu de 16, et la
+  // tablette s'est figée quand même (2026-11-25) : la PSRAM des données AEC
+  // n'était pas la cause. Ne pas refaire l'essai.
   aec_config_t cfg = {};
   cfg.mic_num = 1;
   cfg.ref_num = 1;

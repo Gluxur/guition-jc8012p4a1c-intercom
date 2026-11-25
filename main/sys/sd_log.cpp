@@ -17,6 +17,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sys/crumb.h"
 #include "sys/dbg_log.h"
 #include "sys/prefs.h"
 
@@ -356,7 +357,18 @@ void enforce_free_space() {
 
 // Préfixe chaque ligne de l'heure murale : les horodatages d'esp_log sont en
 // millisecondes depuis le boot, inexploitables après un redémarrage.
+bool write_chunk_impl(const char *buf, size_t n);
+
+// L'écriture SD partage le contrôleur SDMMC avec la liaison Wi-Fi (SDIO) :
+// marqueur autour de chaque bloc pour voir si un blocage tombe dedans.
 bool write_chunk(const char *buf, size_t n) {
+  crumb::mark(crumb::Id::kSdLogWriteBegin, static_cast<uint32_t>(n));
+  const bool ok = write_chunk_impl(buf, n);
+  crumb::mark(crumb::Id::kSdLogWriteEnd, ok ? 1 : 0);
+  return ok;
+}
+
+bool write_chunk_impl(const char *buf, size_t n) {
   char stamp[12] = {};
   if (time_is_valid()) {
     const time_t now = time(nullptr);

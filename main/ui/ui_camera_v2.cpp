@@ -13,6 +13,7 @@
 #include "sys/prefs.h"
 #include "sys/i18n.h"
 #include "theme.h"
+#include "sys/crumb.h"
 #include <cstdio>
 #include <atomic>
 
@@ -149,7 +150,9 @@ static inline uint16_t blend_on_panel(lv_color32_t p, uint8_t br, uint8_t bg_,
 // dispatch d'événement : appeler lv_snapshot en réentrance depuis un callback
 // d'événement corromprait l'état de rendu interne de LVGL.
 static bool band_compose() {
+  crumb::mark(crumb::Id::kBandComposeBegin);
   if (s_band == nullptr || s_band_buf[0] == nullptr) {
+    crumb::mark(crumb::Id::kBandComposeEnd, 1);
     return false;
   }
   if (s_snap_mem == nullptr) {
@@ -158,6 +161,7 @@ static bool band_compose() {
     if (s_snap_mem == nullptr) {
       ESP_LOGE(TAG, "alloc scratch snapshot (%u o) échouée",
                (unsigned)kSnapMemSize);
+      crumb::mark(crumb::Id::kBandComposeEnd, 2);
       return false;
     }
   }
@@ -165,12 +169,15 @@ static bool band_compose() {
   lv_draw_buf_t snap;
   if (lv_draw_buf_init(&snap, 1, 1, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO,
                        s_snap_mem, kSnapMemSize) != LV_RESULT_OK) {
+    crumb::mark(crumb::Id::kBandComposeEnd, 3);
     return false;
   }
   if (lv_snapshot_take_to_draw_buf(s_band, LV_COLOR_FORMAT_ARGB8888, &snap) !=
       LV_RESULT_OK) {
+    crumb::mark(crumb::Id::kBandComposeEnd, 4);
     return false;
   }
+  crumb::mark(crumb::Id::kBandSnapDone);
 
   const uint32_t lw = snap.header.w;
   const uint32_t lh = snap.header.h;
@@ -180,6 +187,7 @@ static bool band_compose() {
   if (lw != (uint32_t)kScrW || lh != (uint32_t)kBandH) {
     ESP_LOGE(TAG, "snapshot %lux%lu inattendu", (unsigned long)lw,
              (unsigned long)lh);
+    crumb::mark(crumb::Id::kBandComposeEnd, 5);
     return false;
   }
 
@@ -187,6 +195,7 @@ static bool band_compose() {
   if (s_band_reading.load(std::memory_order_acquire) == dst) {
     // La tâche de rendu blitte ce buffer : recomposer dedans lui ferait sortir
     // un bandeau à moitié neuf. band_timer_cb réarme `dirty` sur false.
+    crumb::mark(crumb::Id::kBandComposeEnd, 6);
     return false;
   }
   const lv_color_t panel = lv_color_hex(kPanel);
@@ -221,12 +230,14 @@ static bool band_compose() {
   // la composition. Buffer aligné 64 et taille multiple de 64 -> pas de
   // FLAG_UNALIGNED. Coût payé ici (rare : à chaque changement de contrôle), pas
   // dans le chemin chaud.
+  crumb::mark(crumb::Id::kBandMsyncBegin);
   esp_cache_msync(dst, kBandPx * sizeof(uint16_t), ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 
   // release : garantit que les écritures du buffer sont visibles par la tâche
   // de rendu avant qu'elle ne lise le nouveau pointeur.
   s_band_pub.store(dst, std::memory_order_release);
   s_band_next ^= 1;
+  crumb::mark(crumb::Id::kBandComposeEnd);
   return true;
 }
 
@@ -289,6 +300,7 @@ void band_blit() {
   // pas ce buffer sous le DMA du PPA. Deux stores relaxés/release sur le chemin
   // chaud : coût nul devant l'opération PPA elle-même.
   s_band_reading.store(src, std::memory_order_release);
+  crumb::mark(crumb::Id::kBandBlitBegin);
   // Recopie par le PPA et non par le CPU. La version memcpy exigeait un
   // esp_cache_msync par ligne (le scan-out DSI lit la PSRAM, pas le cache) :
   // 1280 appels par frame, mesurés à band=20 ms — davantage que le décodage
@@ -297,6 +309,7 @@ void band_blit() {
   const esp_err_t err = bsp::Bsp::instance().blit_rgb565_to_panel(
       src, (uint32_t)kBandPhysW, (uint32_t)kBandPhysH,
       (uint32_t)s_band_phys.x1, (uint32_t)s_band_phys.y1);
+  crumb::mark(crumb::Id::kBandBlitEnd, static_cast<uint32_t>(err));
   s_band_reading.store(nullptr, std::memory_order_release);
   if (err != ESP_OK) {
     // Chemin chaud : jamais de log par frame (saturation UART = lag tactile).
