@@ -13,6 +13,7 @@
 #include "sys/prefs.h"
 #include "sys/i18n.h"
 #include "theme.h"
+#include "sys/crumb.h"
 #include <cstdio>
 #include <atomic>
 
@@ -149,6 +150,7 @@ static inline uint16_t blend_on_panel(lv_color32_t p, uint8_t br, uint8_t bg_,
 // dispatch d'événement : appeler lv_snapshot en réentrance depuis un callback
 // d'événement corromprait l'état de rendu interne de LVGL.
 static bool band_compose() {
+  crumb::mark(crumb::Id::kBandComposeBegin);
   if (s_band == nullptr || s_band_buf[0] == nullptr) {
     return false;
   }
@@ -227,6 +229,7 @@ static bool band_compose() {
   // de rendu avant qu'elle ne lise le nouveau pointeur.
   s_band_pub.store(dst, std::memory_order_release);
   s_band_next ^= 1;
+  crumb::mark(crumb::Id::kBandComposeEnd);
   return true;
 }
 
@@ -289,6 +292,7 @@ void band_blit() {
   // pas ce buffer sous le DMA du PPA. Deux stores relaxés/release sur le chemin
   // chaud : coût nul devant l'opération PPA elle-même.
   s_band_reading.store(src, std::memory_order_release);
+  crumb::mark(crumb::Id::kBandBlitBegin);
   // Recopie par le PPA et non par le CPU. La version memcpy exigeait un
   // esp_cache_msync par ligne (le scan-out DSI lit la PSRAM, pas le cache) :
   // 1280 appels par frame, mesurés à band=20 ms — davantage que le décodage
@@ -297,6 +301,7 @@ void band_blit() {
   const esp_err_t err = bsp::Bsp::instance().blit_rgb565_to_panel(
       src, (uint32_t)kBandPhysW, (uint32_t)kBandPhysH,
       (uint32_t)s_band_phys.x1, (uint32_t)s_band_phys.y1);
+  crumb::mark(crumb::Id::kBandBlitEnd, static_cast<uint32_t>(err));
   s_band_reading.store(nullptr, std::memory_order_release);
   if (err != ESP_OK) {
     // Chemin chaud : jamais de log par frame (saturation UART = lag tactile).

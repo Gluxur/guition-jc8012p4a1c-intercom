@@ -23,6 +23,7 @@
 #include "net/esphome_frame.h"
 #include "net/esphome_pb.h"
 #include "net/noise_nnpsk0.h"
+#include "sys/crumb.h"
 #include "sys/i18n.h"
 
 namespace esphome_api {
@@ -1280,7 +1281,9 @@ void drain_actions() {
     const bool slot_ok = qa.done == nullptr || slot != nullptr;
     if (target != nullptr && slot_ok && qa.len <= kTxCap) {
       memcpy(s_tx + kTxRoom, qa.msg, qa.len);
+      crumb::mark(crumb::Id::kApiActionSend, qa.call_id);
       sent = send_msg(*target, kHaActionRequest, qa.len);
+      crumb::mark(crumb::Id::kApiActionSent, sent ? 1 : 0);
     }
     heap_caps_free(qa.msg);
     if (sent && qa.done == nullptr) {

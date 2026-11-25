@@ -53,6 +53,7 @@ idf_component_register(
          "media/ringtone_sd.cpp"
          "media/wav_parse.cpp"
          "sys/bmp_header.cpp"
+         "sys/crumb.cpp"
          "sys/dbg_log.cpp"
          "sys/i18n.cpp"
          "sys/net_wdt.cpp"

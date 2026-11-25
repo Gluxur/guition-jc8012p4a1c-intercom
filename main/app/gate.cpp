@@ -11,6 +11,7 @@
 #include "app/camera_session.h"
 #include "app/ha_entity_id.h"
 #include "net/esphome_api.h"
+#include "sys/crumb.h"
 #include "sys/prefs.h"
 
 namespace gate {
@@ -67,6 +68,7 @@ void on_done(void *ctx, bool ok, const char *error, const char *json, size_t len
   (void)json;
   (void)len;
   const gate_logic::Action a = s_last_action.exchange(gate_logic::Action::kNone);
+  crumb::mark(crumb::Id::kGateDone, ok ? 1 : 0);
   if (ok) {
     const char *name = gate_logic::event_name_for(a);
     if (name != nullptr) {
@@ -131,6 +133,7 @@ void on_ha_state(const char *entity_id, const char *attribute, const char *state
 }
 
 bool press() {
+  crumb::mark(crumb::Id::kGatePress);
   char id[ha_entity_id::kMax];
   copy_id(id, sizeof id);
   const gate_logic::Action a = gate_logic::next_action(s_state.load());
@@ -150,6 +153,7 @@ bool press() {
     s_last_action.store(gate_logic::Action::kNone);
     return false;
   }
+  crumb::mark(crumb::Id::kGateQueued, static_cast<uint32_t>(a));
   return true;
 }
 

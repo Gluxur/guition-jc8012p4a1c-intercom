@@ -16,6 +16,7 @@
 #include "sys/prefs.h"
 #include "sys/sys_stats.h"
 #include "ui/ui.h"
+#include "sys/crumb.h"
 
 #include <atomic>
 #include <cstdio>
@@ -271,9 +272,11 @@ void decode_render(const uint8_t *jpeg, size_t len) {
   dcfg.conv_std = JPEG_YUV_RGB_CONV_STD_BT601;
   uint32_t out_size = 0;
   int64_t t0 = esp_timer_get_time();
+  crumb::mark(crumb::Id::kJpegDecodeBegin, static_cast<uint32_t>(len));
   esp_err_t err =
       jpeg_decoder_process(s_dec, &dcfg, jpeg, len, direct ? direct : s_out,
                            direct ? direct_cap : s_out_cap, &out_size);
+  crumb::mark(crumb::Id::kJpegDecodeEnd, static_cast<uint32_t>(err));
   if (err != ESP_OK) {
     if ((++s_perf.decode_errs % 100) == 1) {
       ESP_LOGW(TAG, "decode err %s (%lux%lu)", esp_err_to_name(err),
@@ -303,7 +306,9 @@ void decode_render(const uint8_t *jpeg, size_t len) {
   int64_t tb = esp_timer_get_time();
   if (rr == ESP_OK) {
     bsp::Bsp::instance().set_direct_mode(true);
+    crumb::mark(crumb::Id::kPresentBegin);
     bsp::Bsp::instance().present_frame();
+    crumb::mark(crumb::Id::kPresentEnd);
   }
   int64_t t2 = esp_timer_get_time();
 

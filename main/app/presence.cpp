@@ -15,6 +15,7 @@
 #include "app/motion_detect.h"
 #include "app_config.h"
 #include "bsp.h"
+#include "sys/crumb.h"
 #include "sys/prefs.h"
 #include "sys/sd_image.h"
 
@@ -149,6 +150,7 @@ void write_capture(const uint8_t *frame, const motion::Diff &d,
   if (img == nullptr) {
     return;
   }
+  crumb::mark(crumb::Id::kPresenceWriteBegin);
   make_thumb(frame, img);
   draw_box(img, d);
   char comment[128];
@@ -158,6 +160,7 @@ void write_capture(const uint8_t *frame, const motion::Diff &d,
            stamp, d.changed, d.max_delta, d.x0, d.y0, d.x1, d.y1, mean,
            (unsigned)exp.lines, (unsigned)exp.gain_x16);
   const bool ok = sd_image::write_pgm(path, img, kTw, kTh, comment);
+  crumb::mark(crumb::Id::kPresenceWriteEnd, ok ? 1 : 0);
   heap_caps_free(img);
   ESP_LOGI(TAG, "détection : %s (%d cellules, max_delta=%d) %s", path,
            d.changed, d.max_delta, ok ? "écrit" : "échec");
@@ -182,6 +185,7 @@ void presence_task(void *) {
     // au pipeline vidéo (PSRAM, IRQ) ni au DTLS (SRAM interne).
     if (camera_session::active()) {
       if (bsp.camera_running()) {
+        crumb::mark(crumb::Id::kPresenceCamStop);
         (void)bsp.camera_stop();
         heap_caps_free(frame);
         frame = nullptr;
@@ -213,8 +217,10 @@ void presence_task(void *) {
       have_prev = false;
     }
 
+    crumb::mark(crumb::Id::kPresenceCaptureBegin);
     const esp_err_t err =
         bsp.camera_capture(frame, bsp::Bsp::kCamFrameBytes, kCaptureTimeoutMs);
+    crumb::mark(crumb::Id::kPresenceCaptureEnd, static_cast<uint32_t>(err));
     if (err != ESP_OK) {
       // Une ligne d'état complète toutes les 20 expirations (~30 s) : assez
       // pour diagnostiquer, sans inonder le journal SD.

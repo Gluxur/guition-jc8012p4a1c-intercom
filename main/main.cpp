@@ -27,6 +27,7 @@
 #include "net/gcal.h"
 #include "net/weather.h"
 #include "net/wifi_net.h"
+#include "sys/crumb.h"
 #include "sys/dbg_log.h"
 #include "sys/i18n.h"
 #include "sys/net_wdt.h"
@@ -340,6 +341,10 @@ extern "C" void app_main(void) {
   // logs de connexion sont justement ce qu'on veut retrouver après un reboot.
   sd_log::start();
   sd_log::self_test();
+  // Juste après le journal SD : les marqueurs d'un reset inattendu doivent
+  // atterrir sur la carte, et être remis à zéro avant que les tâches de
+  // l'appel n'en posent de nouveaux.
+  crumb::report_previous();
 
   // Après le montage de la carte : crée /sdcard/calls et relit le compteur
   // d'appels manqués. Avant camera_session/mic_session, qui l'appellent.
