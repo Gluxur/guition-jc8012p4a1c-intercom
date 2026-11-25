@@ -14,6 +14,7 @@
 #include "media/g711.h"
 #include "media/ringtone.h"
 #include "net/signaling.h"
+#include "sys/crumb.h"
 #include "sys/prefs.h"
 
 #include <atomic>
@@ -91,6 +92,7 @@ void start_echo_cancel() {
 
 void stop_echo_cancel() {
   if (aec::active()) {
+    crumb::mark(crumb::Id::kAecStop);
     aec::stop();
     bsp::Bsp::instance().set_mic_reference(false);
   }
@@ -132,7 +134,9 @@ void send_task(void *arg) {
     if (s_muted.load(std::memory_order_relaxed)) {
       memset(pcm_buf, 0, sizeof(pcm_buf));
     } else if (aec::active()) {
+      crumb::mark(crumb::Id::kAecBegin);
       aec::process(pcm_buf, ref_buf, pcm_buf, kFrameSamples); // en place
+      crumb::mark(crumb::Id::kAecEnd);
     }
 
     // Tonalité de test (page Micro/Debug) mixée par-dessus la capture, avant
@@ -380,6 +384,7 @@ void teardown() {
     }
     s_send_task = nullptr;
   }
+  crumb::mark(crumb::Id::kMicSendJoined, send_joined ? 1 : 0);
   // 6 s et non 1 : mic_peer_loop peut être DANS signaling::exchange(), un POST
   // HTTP bloquant borné à 4 s (timeout_ms de net/signaling.cpp) + connexion.
   // C'est le cas dès qu'on raccroche pendant l'ouverture du micro — devenu
@@ -397,12 +402,14 @@ void teardown() {
   // sémaphore purgé au prochain start() absorbera le give tardif.
   if (s_peer != nullptr) {
     if (send_joined && peer_joined) {
+      crumb::mark(crumb::Id::kMicPeerClose);
       esp_peer_close(s_peer);
     } else {
       ESP_LOGE(TAG, "stop: tâches non sorties, peer abandonné (fuite assumée)");
     }
     s_peer = nullptr;
   }
+  crumb::mark(crumb::Id::kMicTeardownEnd);
   ESP_LOGI(TAG, "stop: stopped");
 }
 
@@ -516,6 +523,7 @@ void stop() {
     ringtone::mic_tone_stop();
     return;
   }
+  crumb::mark(crumb::Id::kMicStop);
   s_conn.store(0); // Idle
   s_sdp_answer.store(false);
   s_peak.store(0);

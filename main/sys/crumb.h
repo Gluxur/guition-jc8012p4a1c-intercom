@@ -35,6 +35,22 @@ enum class Id : uint8_t {
   kPresenceWriteEnd,
   kSdLogWriteBegin,
   kSdLogWriteEnd,
+  kBandSnapDone,
+  kBandMsyncBegin,
+  kCamStop,
+  kCamHistoryBegin,
+  kCamHistoryEnd,
+  kVideoStopBegin,
+  kVideoStopEnd,
+  kCamPeerClose,
+  kCamTeardownEnd,
+  kMicStop,
+  kMicSendJoined,
+  kMicPeerClose,
+  kMicTeardownEnd,
+  kAecBegin,
+  kAecEnd,
+  kAecStop,
   kCount
 };
 

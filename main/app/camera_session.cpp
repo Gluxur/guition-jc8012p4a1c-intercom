@@ -15,6 +15,7 @@
 #include "app/video_mjpeg.h"
 #include "media/ringtone.h"
 #include "net/signaling.h"
+#include "sys/crumb.h"
 #include "sys/i18n.h"
 #include "sys/sys_stats.h"
 #include "ui/ui.h"
@@ -533,11 +534,15 @@ void teardown() {
   // bloquante — acceptable ici, cette fonction tourne dans la tâche cam_stop
   // (sauf sur le repli synchrone déjà documenté dans stop(), où l'UI gèle de
   // toute façon).
+  crumb::mark(crumb::Id::kCamHistoryBegin);
   const bool missed_nav = call_history::on_camera_closing();
+  crumb::mark(crumb::Id::kCamHistoryEnd, missed_nav ? 1 : 0);
 
   // s_active=false (posé par stop()) fait déjà retourner les callbacks sans
   // toucher au framebuffer ; on arrête réseau + tâche de rendu.
+  crumb::mark(crumb::Id::kVideoStopBegin);
   video_mjpeg::stop();
+  crumb::mark(crumb::Id::kVideoStopEnd);
 
   // 10 s et non 1 : peer_loop peut être DANS on_peer_msg (attente du canal
   // <= 6 s puis POST <= ~5 s, timeout par opération). À 1 s le join ratait et
@@ -554,6 +559,7 @@ void teardown() {
   // avait divergé. Le sémaphore purgé au prochain start() absorbe le give tardif.
   if (s_peer != nullptr) {
     if (peer_joined) {
+      crumb::mark(crumb::Id::kCamPeerClose);
       esp_peer_close(s_peer);
     } else {
       ESP_LOGE(TAG, "peer_loop non sortie : peer abandonné (fuite assumée)");
@@ -581,6 +587,7 @@ void teardown() {
   // mesure, un dépassement se manifeste par un reboot à un endroit sans rapport
   // avec le vrai coupable. Si cette marge redescend sous ~1 Ko, agrandir la
   // pile de cam_stop plutôt que d'ajouter du travail ici.
+  crumb::mark(crumb::Id::kCamTeardownEnd);
   ESP_LOGI(TAG, "cam_stop : marge de pile %u o",
            (unsigned)(uxTaskGetStackHighWaterMark(nullptr) *
                       sizeof(StackType_t)));
@@ -613,6 +620,7 @@ void stop() {
     return;
   }
   s_stop_pending.store(false);
+  crumb::mark(crumb::Id::kCamStop);
   if (s_stopping.exchange(true, std::memory_order_acq_rel)) {
     return; // démontage déjà en vol (double appui sur Retour)
   }

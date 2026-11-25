@@ -24,7 +24,12 @@ constexpr const char *kNames[] = {
     "jpeg_decode_begin", "jpeg_decode_end",    "present_begin",
     "present_end",       "presence_cam_stop",  "presence_capture_begin",
     "presence_capture_end", "presence_write_begin", "presence_write_end",
-    "sdlog_write_begin", "sdlog_write_end",
+    "sdlog_write_begin", "sdlog_write_end",    "band_snap_done",
+    "band_msync_begin",  "cam_stop",           "cam_history_begin",
+    "cam_history_end",   "video_stop_begin",   "video_stop_end",
+    "cam_peer_close",    "cam_teardown_end",   "mic_stop",
+    "mic_send_joined",   "mic_peer_close",     "mic_teardown_end",
+    "aec_begin",         "aec_end",            "aec_stop",
 };
 static_assert(sizeof(kNames) / sizeof(kNames[0]) == kN,
               "un libellé par crumb::Id");
