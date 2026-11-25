@@ -13,7 +13,9 @@ namespace crumb {
 namespace {
 
 constexpr const char *TAG = "crumb";
-constexpr uint32_t kMagic = 0xC0B1D2E3;
+// Changé à chaque ajout d'Id : la disposition de Store en dépend, et un ancien
+// contenu relu avec la nouvelle disposition mélangerait les étapes.
+constexpr uint32_t kMagic = 0xC0B1D2E4;
 constexpr size_t kN = static_cast<size_t>(Id::kCount);
 
 // Indexés par Id ; libellés de log, pas des textes d'interface.
@@ -30,6 +32,8 @@ constexpr const char *kNames[] = {
     "cam_peer_close",    "cam_teardown_end",   "mic_stop",
     "mic_send_joined",   "mic_peer_close",     "mic_teardown_end",
     "aec_begin",         "aec_end",            "aec_stop",
+    "mic_read_begin",    "mic_read_end",       "mic_send_begin",
+    "mic_send_end",
 };
 static_assert(sizeof(kNames) / sizeof(kNames[0]) == kN,
               "un libellé par crumb::Id");

@@ -122,9 +122,11 @@ void send_task(void *arg) {
       start_echo_cancel();
     }
     bsp::Bsp &bsp_inst = bsp::Bsp::instance();
+    crumb::mark(crumb::Id::kMicReadBegin, aec::active() ? 1 : 0);
     esp_err_t err = aec::active()
                         ? bsp_inst.read_pcm_ref(pcm_buf, ref_buf, kFrameSamples)
                         : bsp_inst.read_pcm(pcm_buf, kFrameSamples);
+    crumb::mark(crumb::Id::kMicReadEnd, static_cast<uint32_t>(err));
     if (err != ESP_OK) {
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
@@ -165,7 +167,9 @@ void send_task(void *arg) {
     frame.data = alaw_buf;
     frame.size = kFrameSamples;
     if (s_peer != nullptr) {
+      crumb::mark(crumb::Id::kMicSendBegin);
       esp_peer_send_audio(s_peer, &frame);
+      crumb::mark(crumb::Id::kMicSendEnd);
     }
     pts += 20; // 20ms par frame
 
@@ -179,7 +183,7 @@ void send_task(void *arg) {
   stop_echo_cancel();
   xSemaphoreGive(s_send_task_stopped);
   // Pile allouée via xTaskCreateWithCaps : vTaskDelete(NULL) fuirait le bloc
-  // PSRAM (tâche "statique" pour FreeRTOS, l'idle ne libère rien).
+  // (tâche "statique" pour FreeRTOS, l'idle ne libère rien).
   vTaskDeleteWithCaps(nullptr);
 }
 
@@ -354,9 +358,16 @@ void start_blocking() {
   // Épinglée cœur 1 : l'AEC y coûte jusqu'à ~40 % d'un cœur en session (mesuré
   // de nuit), et le cœur 0 est réservé au drain TCP du MJPEG, facteur limitant
   // du débit vidéo. 8 Ko et non 4 : aec_process s'exécute sur cette pile.
+  // Pile en SRAM interne depuis v2.4.0-beta.6. En PSRAM, la tablette se figeait
+  // en appel décroché AEC actif (reset=WDT, sans panic : les deux cœurs
+  // bloqués), même avec les données de l'AEC en interne (beta.5), et jamais
+  // sans AEC. esp-sr fait ses accès vectoriels sur cette pile, et le contexte
+  // FPU/PIE y est sauvegardé à chaque commutation. Hypothèse en test, pas une
+  // preuve : les marqueurs crumb mic_read/mic_send diront où en était le cœur 1.
   if (xTaskCreatePinnedToCoreWithCaps(send_task, "mic_send", 8192, nullptr, 4,
                                       &s_send_task, 1,
-                                      MALLOC_CAP_SPIRAM) != pdPASS) {
+                                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) !=
+      pdPASS) {
     ESP_LOGE(TAG, "start: failed to create mic_send_task");
     // Démontage direct et non stop() : on tient déjà le jeton de transition,
     // stop() le verrait pris et ne ferait rien.

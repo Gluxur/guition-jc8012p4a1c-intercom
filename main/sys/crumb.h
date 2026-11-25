@@ -51,6 +51,10 @@ enum class Id : uint8_t {
   kAecBegin,
   kAecEnd,
   kAecStop,
+  kMicReadBegin,
+  kMicReadEnd,
+  kMicSendBegin,
+  kMicSendEnd,
   kCount
 };
 
