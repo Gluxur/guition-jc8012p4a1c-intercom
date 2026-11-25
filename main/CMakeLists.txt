@@ -48,6 +48,7 @@ idf_component_register(
          "net/weather_parse.cpp"
          "net/wifi_net.cpp"
          "media/aec.cpp"
+         "media/half_duplex.cpp"
          "media/g711.cpp"
          "media/ringtone.cpp"
          "media/ringtone_sd.cpp"

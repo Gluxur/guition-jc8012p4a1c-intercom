@@ -75,6 +75,7 @@ add_executable(tests
   test_ephemeris.cpp
   test_file_path.cpp
   test_g711.cpp
+  test_half_duplex.cpp
   test_ppa_srm_quirk.cpp
   test_ringtone.cpp
   test_wav_parse.cpp
@@ -102,6 +103,7 @@ add_executable(tests
   "${APP_DIR}/app/ha_entity_id.cpp"
   "${APP_DIR}/app/motion_detect.cpp"
   "${APP_DIR}/media/g711.cpp"
+  "${APP_DIR}/media/half_duplex.cpp"
   "${APP_DIR}/media/ringtone.cpp"
   "${APP_DIR}/media/wav_parse.cpp"
   "${APP_DIR}/ui/premul_blend.cpp"

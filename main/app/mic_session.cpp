@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_peer.h"
 #include "esp_peer_default.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -12,6 +13,7 @@
 #include "app/call_history.h"
 #include "media/aec.h"
 #include "media/g711.h"
+#include "media/half_duplex.h"
 #include "media/ringtone.h"
 #include "net/signaling.h"
 #include "sys/crumb.h"
@@ -64,12 +66,27 @@ std::atomic<uint8_t> s_conn{0};
 std::atomic<bool> s_sdp_answer{false};
 std::atomic<uint8_t> s_peak{0}; // crête PCM normalisée 0-100
 
+// Semi-duplex : lus et écrits par la seule tâche mic_send (start/stop_echo_
+// cancel y sont appelés), donc sans atomique.
+bool s_half_duplex = false;
+half_duplex::Ducker s_ducker;
+uint32_t s_frames = 0;
+uint32_t s_duck_frames = 0;
+
 // Arme l'annulation d'écho selon le réglage. Tout échec laisse le micro marcher
 // sans AEC : un visiteur qui s'entend vaut mieux qu'un visiteur qu'on n'entend
 // pas répondre.
 void start_echo_cancel() {
   const prefs::EchoCancel mode = prefs::echo_cancel();
   if (mode == prefs::EchoCancel::kOff) {
+    return;
+  }
+  if (mode == prefs::EchoCancel::kHalfDuplex) {
+    // Ni esp-sr ni référence stéréo : le niveau du HP vient d'aud_render.
+    s_ducker.reset();
+    s_duck_frames = s_frames = 0;
+    s_half_duplex = true;
+    ESP_LOGI(TAG, "décroché : semi-duplex actif");
     return;
   }
   ESP_LOGI(TAG, "décroché : AEC demandé (mode %u), SRAM interne libre %u o",
@@ -91,6 +108,14 @@ void start_echo_cancel() {
 }
 
 void stop_echo_cancel() {
+  if (s_half_duplex) {
+    s_half_duplex = false;
+    // Une ligne par appel : c'est ce qui permet de régler kFarThreshold. Près
+    // de 100 % = seuil sous le souffle de la platine, micro toujours baissé.
+    ESP_LOGI(TAG, "semi-duplex : micro baissé %u %% des trames (%u/%u)",
+             s_frames ? (unsigned)(s_duck_frames * 100 / s_frames) : 0u,
+             (unsigned)s_duck_frames, (unsigned)s_frames);
+  }
   if (aec::active()) {
     crumb::mark(crumb::Id::kAecStop);
     aec::stop();
@@ -135,6 +160,12 @@ void send_task(void *arg) {
     // 20 ms (horloge du codec), sans elle la boucle tournerait à vide.
     if (s_muted.load(std::memory_order_relaxed)) {
       memset(pcm_buf, 0, sizeof(pcm_buf));
+    } else if (s_half_duplex) {
+      const bool duck = half_duplex::far_speaking(
+          static_cast<uint32_t>(esp_timer_get_time() / 1000));
+      s_ducker.apply(pcm_buf, kFrameSamples, duck);
+      s_frames++;
+      s_duck_frames += duck ? 1 : 0;
     } else if (aec::active()) {
       crumb::mark(crumb::Id::kAecBegin);
       aec::process(pcm_buf, ref_buf, pcm_buf, kFrameSamples); // en place

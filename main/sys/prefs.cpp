@@ -61,7 +61,7 @@ std::atomic<bool> s_beta{false};
 std::atomic<bool> s_pres_cap{false};
 
 // Écrit par la tâche LVGL, lu par mic_send au décroché : atomique.
-std::atomic<EchoCancel> s_echo{EchoCancel::kLowCost};
+std::atomic<EchoCancel> s_echo{EchoCancel::kHalfDuplex};
 
 // Écrit par la tâche LVGL, lu par ui::create_screens() au boot : atomique, par
 // cohérence avec les autres préférences.
@@ -174,7 +174,7 @@ void init() {
     s_pres_cap.store(val != 0);
   }
   if (nvs_get_u8(handle, kEchoKey, &val) == ESP_OK &&
-      val <= static_cast<uint8_t>(EchoCancel::kHighPerf)) {
+      val <= static_cast<uint8_t>(EchoCancel::kHalfDuplex)) {
     s_echo.store(static_cast<EchoCancel>(val));
   }
   if (nvs_get_u8(handle, kThemeKey, &val) == ESP_OK &&

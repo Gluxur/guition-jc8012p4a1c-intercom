@@ -8,6 +8,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "media/g711.h"
+#include "media/half_duplex.h"
 #include "media/ringtone.h"
 
 #include <cstring>
@@ -146,6 +147,12 @@ void render_task(void *arg) {
       last_remote_us = esp_timer_get_time();
       // mix_into est un no-op si la sonnerie n'est pas armée.
       ringtone::mix_into(s_slots[idx], s_slot_len[idx]);
+      // Avant play_pcm, qui bloque tant que le DMA est plein : le niveau doit
+      // être connu quand le son part, pas un bloc plus tard. Coût : une crête
+      // sur ≤1920 éch., une fois par bloc.
+      half_duplex::note_far(
+          s_slots[idx], s_slot_len[idx],
+          static_cast<uint32_t>(esp_timer_get_time() / 1000));
       esp_err_t err =
           bsp::Bsp::instance().play_pcm(s_slots[idx], s_slot_len[idx]);
       flush_frames = 0; // audio réel réécrit le DMA : purge inutile

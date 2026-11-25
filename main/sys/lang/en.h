@@ -107,7 +107,8 @@ inline constexpr Entry kStrings[] = {
     // --- Configuration
     {S::kSettingsThemeOptions, "Classic (original)\nVice (sunset)"},
     {S::kSettingsEchoOptions,
-     "Off\nLow cost (less CPU)\nHigh performance (less RAM)"},
+     "Off\nLow cost (less CPU)\nHigh performance (less RAM)\n"
+     "Half duplex (mic lowered while the visitor talks)"},
     {S::kSettingsRingInternal, "(built-in ringtone)"},
     {S::kSettingsRestart, "Restart"},
     {S::kSettingsLater, "Later"},
@@ -203,6 +204,7 @@ inline constexpr Entry kStrings[] = {
     {S::kHaEchoOff, "Off"},
     {S::kHaEchoLowCost, "Low cost"},
     {S::kHaEchoHighPerf, "High performance"},
+    {S::kHaEchoHalfDuplex, "Half duplex"},
     {S::kHaEntScreen, "Screen"},
     {S::kHaEntDnd, "Do not disturb"},
     {S::kHaEntPage, "Displayed page"},

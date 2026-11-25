@@ -109,9 +109,17 @@ void set_file_server(bool on);
 // d'un cœur). Coût mesuré en session vidéo de nuit : FD_HIGH_PERF ~38 % du
 // cœur 1, 8,5 Ko de SRAM interne ; FD_LOW_COST ~30 % moins de CPU mais 12,7 Ko
 // de SRAM interne — c'est la SRAM, pas le CPU, qui manque le plus en appel.
-enum class EchoCancel : uint8_t { kOff = 0, kLowCost = 1, kHighPerf = 2 };
+// kHalfDuplex (media/half_duplex) : pas d'esp-sr, micro atténué pendant que le
+// visiteur parle. Ajouté en dernier : les valeurs déjà en NVS gardent leur sens.
+enum class EchoCancel : uint8_t {
+  kOff = 0,
+  kLowCost = 1,
+  kHighPerf = 2,
+  kHalfDuplex = 3,
+};
 
-// Défaut : kLowCost. Lu par mic_send au DÉCROCHÉ : un changement en cours
+// Défaut : kHalfDuplex depuis v2.4.0 (l'AEC esp-sr figeait la tablette en
+// appel décroché, 2026-11-25, et laissait des restes d'écho). Lu par mic_send au DÉCROCHÉ : un changement en cours
 // d'appel vaut pour l'appel suivant. Écrit depuis la tâche LVGL.
 [[nodiscard]] EchoCancel echo_cancel();
 

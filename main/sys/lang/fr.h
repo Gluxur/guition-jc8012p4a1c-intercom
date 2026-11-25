@@ -110,7 +110,8 @@ inline constexpr Entry kStrings[] = {
     {S::kSettingsThemeOptions,
      "Classique (d'origine)\nVice (coucher de soleil)"},
     {S::kSettingsEchoOptions,
-     "Désactivée\nÉconomique (moins de CPU)\nHaute performance (moins de RAM)"},
+     "Désactivée\nÉconomique (moins de CPU)\nHaute performance (moins de RAM)\n"
+     "Semi-duplex (micro baissé quand le visiteur parle)"},
     {S::kSettingsRingInternal, "(sonnerie interne)"},
     {S::kSettingsRestart, "Redémarrer"},
     {S::kSettingsLater, "Plus tard"},
@@ -208,6 +209,7 @@ inline constexpr Entry kStrings[] = {
     {S::kHaEchoOff, "Desactivee"},
     {S::kHaEchoLowCost, "Economique"},
     {S::kHaEchoHighPerf, "Haute performance"},
+    {S::kHaEchoHalfDuplex, "Semi-duplex"},
     {S::kHaEntScreen, "Ecran"},
     {S::kHaEntDnd, "Ne pas deranger"},
     {S::kHaEntPage, "Page affichee"},

@@ -177,7 +177,7 @@ void s_mic_gain(float f) {
 // Labels in prefs::EchoCancel order: the index IS the setting, as in the
 // dropdown of the Settings page.
 const Str kEchoLabels[] = {Str::kHaEchoOff, Str::kHaEchoLowCost,
-                           Str::kHaEchoHighPerf};
+                           Str::kHaEchoHighPerf, Str::kHaEchoHalfDuplex};
 
 // The list HA was given (esphome_api translates it the same way).
 const char *echo_label(size_t i) { return i18n::t(kEchoLabels[i]); }

@@ -221,6 +221,7 @@ enum class Str : uint16_t {
   kHaEchoOff,
   kHaEchoLowCost,
   kHaEchoHighPerf,
+  kHaEchoHalfDuplex,
   kHaEntScreen,
   kHaEntDnd,
   kHaEntPage,
