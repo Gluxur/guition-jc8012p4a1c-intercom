@@ -43,9 +43,10 @@ size_t s_out_len = 0;
 int16_t s_prev_mic = 0;
 int16_t s_prev_ref = 0;
 
+// SRAM interne et non PSRAM depuis v2.4.0-beta.5 (raison dans start()).
 int16_t *alloc16(size_t samples) {
   return static_cast<int16_t *>(heap_caps_aligned_calloc(
-      16, samples, sizeof(int16_t), MALLOC_CAP_SPIRAM));
+      16, samples, sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
 
 // ×2 par interpolation linéaire : la voix G.711 n'a rien au-dessus de 4 kHz,
@@ -78,17 +79,22 @@ bool start(bool high_perf) {
              (unsigned)int0, (unsigned)kMinInternalBefore);
     return false;
   }
-  // caps PSRAM : aec_create() simple alloue en SRAM interne (8,5 à 12,7 Ko
-  // mesurés), pile dans la réserve dont le SDIO d'esp_hosted et lwip ont besoin
-  // pendant un appel. La bibliothèque ne documente pas ce qu'elle garde quand
-  // même en interne : le delta est journalisé ci-dessous.
+  // caps INTERNE, plus PSRAM. Avec l'état et les tampons de l'AEC en PSRAM,
+  // la tablette se figeait en appel décroché (reset=WDT, ni panic ni trace) :
+  // les marqueurs crumb montraient aec_process et le décodeur JPEG matériel en
+  // vol au même instant, et sans AEC plus aucun blocage (2026-11-25, beta.4).
+  // Hypothèse : calcul esp-sr sur la PSRAM pendant que le DMA JPEG/PPA la
+  // sature, sur ce silicium pré-v3. Le choix PSRAM datait d'une session à
+  // ~27 Ko de SRAM interne libre ; les logs de beta.4 en montrent ~143 Ko
+  // après l'AEC. Les planchers ci-dessus restent la garde. Le coût réel est
+  // journalisé ci-dessous.
   aec_config_t cfg = {};
   cfg.mic_num = 1;
   cfg.ref_num = 1;
   cfg.out_num = 1;
   cfg.filter_length = kFilterLength;
   cfg.sample_rate = kAecRate;
-  cfg.caps = MALLOC_CAP_SPIRAM;
+  cfg.caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
   cfg.mode = high_perf ? AEC_MODE_FD_HIGH_PERF : AEC_MODE_FD_LOW_COST;
   cfg.nlp_level = AEC_NLP_LEVEL_AGGR; // défaut documenté
   s_h = aec_create_from_config(&cfg);
